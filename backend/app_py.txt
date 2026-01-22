@@ -1,0 +1,1486 @@
+from flask import Flask, request, jsonify, send_file
+from flask_cors import CORS
+from flask_mail import Mail, Message
+from database import fetch_all, fetch_one, execute_query, init_db
+from validators import validate_data, ValidationError
+from logger_config import app_logger
+import traceback
+from datetime import datetime, timedelta
+import csv
+import io
+import secrets
+import sqlite3
+import jwt
+import hashlib
+from functools import wraps
+from auth import AuthManager, login_required, permission_required, role_required
+#from email_service_flask import EmailService, init_email_service
+from email_service import EmailService, init_email_service
+
+
+# ==================== CONFIGURATION ====================
+SECRET_KEY = 'museum-secret-key-2026-bennharong'
+DATABASE = '../data/museum.db'
+
+# ==================== DATABASE CONNECTION ====================
+def get_db():
+    """Kết nối đến database"""
+    conn = sqlite3.connect(DATABASE)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+# ==================== AUTHENTICATION FUNCTIONS ====================
+def hash_password(password):
+    """Hash password using MD5"""
+    return hashlib.md5(password.encode()).hexdigest()
+
+def generate_token(user_id, username):
+    """Generate JWT token"""
+    payload = {
+        'user_id': user_id,
+        'username': username,
+        'exp': datetime.utcnow() + timedelta(days=1)
+    }
+    return jwt.encode(payload, SECRET_KEY, algorithm='HS256')
+
+def verify_token(token):
+    """Verify JWT token"""
+    try:
+        return jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
+    except jwt.ExpiredSignatureError:
+        return None
+    except jwt.InvalidTokenError:
+        return None
+
+def require_auth(f):
+    """Decorator to require authentication"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        auth_header = request.headers.get('Authorization', '')
+
+        if not auth_header.startswith('Bearer '):
+            return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+
+        token = auth_header.split(' ')[1]
+        payload = verify_token(token)
+
+        if not payload:
+            return jsonify({'success': False, 'message': 'Invalid token'}), 401
+
+        request.user = payload
+        return f(*args, **kwargs)
+
+    return decorated_function
+
+# ==================== APP INITIALIZATION ====================
+app = Flask(__name__)
+CORS(app)
+
+# Email Configuration
+app.config['MAIL_SERVER'] = 'smtp.gmail.com'
+app.config['MAIL_PORT'] = 587
+app.config['MAIL_USE_TLS'] = True
+app.config['MAIL_USERNAME'] = 'bennharong11@gmail.com'
+app.config['MAIL_PASSWORD'] = 'auja nfqr ddnx xqdl'
+app.config['MAIL_DEFAULT_SENDER'] = 'bennharong11@gmail.com'
+
+mail = Mail(app)
+init_email_service(app)
+
+# Initialize logger
+logger = app_logger()
+
+# Initialize database
+try:
+    init_db()
+    logger.info("Database initialized successfully")
+except Exception as e:
+    logger.error(f"Database initialization error: {str(e)}")
+
+# ==================== HELPER FUNCTIONS ====================
+def api_response(success, message, data=None):
+    response = {
+        'success': success,
+        'message': message,
+        'timestamp': datetime.now().isoformat()
+    }
+    if data is not None:
+        response['data'] = data
+    return jsonify(response)
+
+def handle_error(error, context=""):
+    error_msg = str(error)
+    logger.error(f"Error in {context}: {error_msg}")
+    logger.error(traceback.format_exc())
+    return api_response(False, f"Lỗi: {error_msg}"), 500
+
+def generate_ticket_code():
+    date_str = datetime.now().strftime('%y%m%d')
+    random_hex = secrets.token_hex(2).upper()
+    return f"MT{date_str}{random_hex}"
+
+# ==================== AUTHENTICATION ENDPOINTS ====================
+@app.route('/api/auth/login', methods=['POST'])
+def api_login():
+    """Login endpoint"""
+    try:
+        data = request.get_json()
+        username = data.get('username', '').strip()
+        password = data.get('password', '')
+
+        if not username or not password:
+            return jsonify({
+                'success': False,
+                'message': 'Username and password required'
+            }), 400
+
+        conn = get_db()
+        cursor = conn.cursor()
+
+        # Get user with roles
+        cursor.execute('''
+            SELECT u.id, u.username, u.password_hash, u.email, u.full_name,
+                   GROUP_CONCAT(r.name) as roles
+            FROM users u
+            LEFT JOIN user_roles ur ON u.id = ur.user_id
+            LEFT JOIN roles r ON ur.role_id = r.id
+            WHERE u.username = ? AND u.is_active = 1
+            GROUP BY u.id
+        ''', (username,))
+
+        user = cursor.fetchone()
+
+        if not user:
+            conn.close()
+            logger.warning(f"Login failed: User not found - {username}")
+            return jsonify({
+                'success': False,
+                'message': 'Invalid username or password'
+            }), 401
+
+        # Verify password
+        password_hash = hash_password(password)
+        if user['password_hash'] != password_hash:
+            conn.close()
+            logger.warning(f"Login failed: Wrong password - {username}")
+            return jsonify({
+                'success': False,
+                'message': 'Invalid username or password'
+            }), 401
+
+        # Update last login
+        cursor.execute('''
+            UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?
+        ''', (user['id'],))
+        conn.commit()
+
+        # Log activity
+        try:
+            cursor.execute('''
+                INSERT INTO user_activity_log (user_id, action, ip_address)
+                VALUES (?, 'login', ?)
+            ''', (user['id'], request.remote_addr))
+            conn.commit()
+        except Exception as e:
+            logger.error(f"Failed to log activity: {e}")
+
+        conn.close()
+
+        # Generate token
+        token = generate_token(user['id'], user['username'])
+
+        logger.info(f"Login successful: {username}")
+
+        return jsonify({
+            'success': True,
+            'message': 'Login successful',
+            'token': token,
+            'user': {
+                'id': user['id'],
+                'username': user['username'],
+                'email': user['email'],
+                'full_name': user['full_name'],
+                'roles': user['roles'].split(',') if user['roles'] else []
+            },
+            'redirect': '/web/admin/users/'
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Login error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': 'Server error'
+        }), 500
+
+@app.route('/api/auth/verify', methods=['GET'])
+def api_verify_token():
+    """Verify token"""
+    auth_header = request.headers.get('Authorization', '')
+
+    if not auth_header.startswith('Bearer '):
+        return jsonify({'valid': False}), 401
+
+    token = auth_header.split(' ')[1]
+    payload = verify_token(token)
+
+    if payload:
+        return jsonify({'valid': True, 'user': payload}), 200
+    return jsonify({'valid': False}), 401
+
+@app.route('/api/auth/logout', methods=['POST'])
+def api_logout():
+    """Logout"""
+    auth_header = request.headers.get('Authorization', '')
+    if auth_header.startswith('Bearer '):
+        token = auth_header.split(' ')[1]
+        payload = verify_token(token)
+        if payload:
+            try:
+                conn = get_db()
+                cursor = conn.cursor()
+                cursor.execute('''
+                    INSERT INTO user_activity_log (user_id, action, ip_address)
+                    VALUES (?, 'logout', ?)
+                ''', (payload['user_id'], request.remote_addr))
+                conn.commit()
+                conn.close()
+            except:
+                pass
+
+    return jsonify({
+        'success': True,
+        'message': 'Logged out'
+    }), 200
+
+# ==================== MUSEUM INFO ENDPOINTS ====================
+@app.route('/api/museum-info', methods=['GET'])
+def get_museum_info():
+    try:
+        result = fetch_one("SELECT * FROM museum_info WHERE id = 1")
+        if result:
+            return api_response(True, "Lấy thông tin bảo tàng thành công", result)
+        return api_response(False, "Không tìm thấy thông tin bảo tàng"), 404
+    except Exception as e:
+        return handle_error(e, "get_museum_info")
+
+@app.route('/api/museum-info', methods=['PUT'])
+def update_museum_info():
+    try:
+        data = request.get_json()
+        query = """
+            UPDATE museum_info
+            SET name=?, address=?, phone=?, email=?,
+                website=?, description=?, opening_hours=?,
+                latitude=?, longitude=?, updated_at=CURRENT_TIMESTAMP
+            WHERE id = 1
+        """
+        execute_query(query, (
+            data.get('name'), data.get('address'), data.get('phone'), data.get('email'),
+            data.get('website'), data.get('description'), data.get('opening_hours'),
+            data.get('latitude'), data.get('longitude')
+        ))
+        return api_response(True, "Cập nhật thông tin bảo tàng thành công")
+    except Exception as e:
+        return handle_error(e, "update_museum_info")
+
+# ==================== CORNERS ENDPOINTS ====================
+@app.route('/api/corners', methods=['GET'])
+def get_corners():
+    try:
+        corners = fetch_all("SELECT * FROM museum_corners ORDER BY id")
+        return api_response(True, "Lấy danh sách góc bảo tàng thành công", corners)
+    except Exception as e:
+        return handle_error(e, "get_corners")
+
+# ==================== MONUMENTS ENDPOINTS ====================
+@app.route('/api/monuments', methods=['GET'])
+def get_monuments():
+    try:
+        active_only = request.args.get('active_only', 'true').lower() == 'true'
+        query = "SELECT * FROM monuments WHERE is_active = 1 ORDER BY id" if active_only else "SELECT * FROM monuments ORDER BY id"
+        monuments = fetch_all(query)
+        return api_response(True, "Lấy danh sách tượng đài thành công", monuments)
+    except Exception as e:
+        return handle_error(e, "get_monuments")
+
+# ==================== TICKET TYPES ENDPOINTS ====================
+@app.route('/api/ticket-types', methods=['GET'])
+def get_ticket_types():
+    try:
+        ticket_types = fetch_all("SELECT * FROM ticket_types WHERE is_active = 1 ORDER BY price")
+        return api_response(True, "Lấy danh sách loại vé thành công", ticket_types)
+    except Exception as e:
+        return handle_error(e, "get_ticket_types")
+
+# ==================== CUSTOMERS ENDPOINTS ====================
+@app.route('/api/customers', methods=['GET'])
+def get_customers():
+    try:
+        search = request.args.get('search', '')
+        limit = int(request.args.get('limit', 100))
+        offset = int(request.args.get('offset', 0))
+
+        if search:
+            query = """SELECT * FROM customers WHERE full_name LIKE ? OR phone LIKE ? OR email LIKE ?
+                       ORDER BY created_at DESC LIMIT ? OFFSET ?"""
+            search_pattern = f"%{search}%"
+            customers = fetch_all(query, (search_pattern, search_pattern, search_pattern, limit, offset))
+        else:
+            customers = fetch_all("SELECT * FROM customers ORDER BY created_at DESC LIMIT ? OFFSET ?", (limit, offset))
+
+        return api_response(True, "Lấy danh sách khách hàng thành công", customers)
+    except Exception as e:
+        return handle_error(e, "get_customers")
+
+@app.route('/api/customers/search', methods=['GET'])
+def search_customer_by_phone():
+    try:
+        phone = request.args.get('phone', '')
+        if not phone:
+            return api_response(False, "Vui lòng cung cấp số điện thoại"), 400
+
+        customer = fetch_one("SELECT * FROM customers WHERE phone = ?", (phone,))
+        if customer:
+            return api_response(True, "Tìm thấy khách hàng", customer)
+        return api_response(False, "Không tìm thấy khách hàng"), 404
+    except Exception as e:
+        return handle_error(e, "search_customer_by_phone")
+
+@app.route('/api/customers', methods=['POST'])
+def create_customer():
+    try:
+        data = request.get_json()
+        validate_data('customer', data)
+
+        query = """INSERT INTO customers (full_name, phone, email, date_of_birth, gender, nationality, address)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)"""
+        customer_id = execute_query(query, (
+            data.get('full_name'), data.get('phone'), data.get('email'),
+            data.get('date_of_birth'), data.get('gender'),
+            data.get('nationality', 'Việt Nam'), data.get('address')
+        ))
+
+        logger.info(f"Customer added: ID={customer_id}, Name={data.get('full_name')}")
+        return api_response(True, "Thêm khách hàng thành công", {'id': customer_id}), 201
+    except ValidationError as ve:
+        logger.warning(f"Validation failed for customer: {ve.errors}")
+        return api_response(False, "Dữ liệu không hợp lệ", ve.errors), 400
+    except Exception as e:
+        return handle_error(e, "create_customer")
+
+@app.route('/api/customers/<int:customer_id>', methods=['DELETE'])
+def delete_customer(customer_id):
+    """Delete a customer by ID - Only if they have no tickets"""
+    try:
+        customer = fetch_one("SELECT id, full_name FROM customers WHERE id = ?", (customer_id,))
+
+        if not customer:
+            return api_response(False, "Không tìm thấy khách hàng"), 404
+
+        ticket_count = fetch_one(
+            "SELECT COUNT(*) as count FROM tickets WHERE customer_id = ?",
+            (customer_id,)
+        )
+
+        if ticket_count and ticket_count['count'] > 0:
+            return api_response(
+                False,
+                f"Không thể xóa! Khách hàng này có {ticket_count['count']} vé đã mua."
+            ), 400
+
+        execute_query("DELETE FROM customers WHERE id = ?", (customer_id,))
+
+        logger.info(f"Deleted customer: ID={customer_id}, Name={customer['full_name']}")
+
+        return api_response(True, "Đã xóa khách hàng thành công")
+
+    except Exception as e:
+        return handle_error(e, "delete_customer")
+
+# ==================== TICKETS ENDPOINTS ====================
+@app.route('/api/tickets', methods=['GET'])
+def get_tickets():
+    try:
+        status = request.args.get('status')
+        limit = int(request.args.get('limit', 100))
+        offset = int(request.args.get('offset', 0))
+
+        query = """SELECT t.*, c.full_name, c.phone, tt.name as ticket_type_name
+                   FROM tickets t
+                   LEFT JOIN customers c ON t.customer_id = c.id
+                   LEFT JOIN ticket_types tt ON t.ticket_type_id = tt.id"""
+
+        if status:
+            query += " WHERE t.status = ?"
+            params = (status, limit, offset)
+        else:
+            params = (limit, offset)
+
+        query += " ORDER BY t.purchase_date DESC LIMIT ? OFFSET ?"
+        tickets = fetch_all(query, params)
+        return api_response(True, "Lấy danh sách vé thành công", tickets)
+    except Exception as e:
+        return handle_error(e, "get_tickets")
+
+@app.route('/api/tickets', methods=['POST'])
+def create_ticket():
+    try:
+        data = request.get_json()
+        logger.info(f"DEBUG: Ticket data received: {data}")
+        validate_data('ticket', data)
+
+        ticket_code = generate_ticket_code()
+        query = """INSERT INTO tickets (customer_id, ticket_type_id, ticket_code, quantity, total_price, visit_date, payment_method, status)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, 'active')"""
+        ticket_id = execute_query(query, (
+            data.get('customer_id'), data.get('ticket_type_id'), ticket_code,
+            data.get('quantity'), data.get('total_price'),
+            data.get('visit_date'), data.get('payment_method')
+        ))
+
+        logger.info(f"Ticket created: {ticket_code}")
+        return api_response(True, "Bán vé thành công", {'id': ticket_id, 'ticket_code': ticket_code}), 201
+    except ValidationError as ve:
+        logger.warning(f"Validation failed for ticket: {ve.errors}")
+        return api_response(False, "Dữ liệu không hợp lệ", ve.errors), 400
+    except Exception as e:
+        return handle_error(e, "create_ticket")
+
+# ==================== SEND EMAIL ENDPOINT ====================
+@app.route('/api/tickets/<int:ticket_id>/send-email', methods=['POST'])
+def send_ticket_email(ticket_id):
+    try:
+        query = """SELECT t.*, c.full_name, c.email, c.phone, tt.name as ticket_type_name
+                   FROM tickets t LEFT JOIN customers c ON t.customer_id = c.id
+                   LEFT JOIN ticket_types tt ON t.ticket_type_id = tt.id WHERE t.id = ?"""
+        ticket = fetch_one(query, (ticket_id,))
+
+        if not ticket:
+            return api_response(False, "Không tìm thấy vé"), 404
+
+        msg = Message(
+            subject=f"Xác nhận chuyển khoản vé tham quan - {ticket['ticket_code']}",
+            recipients=['cloudking1304@gmail.com']
+        )
+
+        msg.body = f"""
+========================================
+XÁC NHẬN CHUYỂN KHOẢN
+BẢO TÀNG HỒ CHÍ MINH - BẾN NHÀ RỒNG
+========================================
+
+Mã vé: {ticket['ticket_code']}
+ID vé: #{ticket['id']}
+
+THÔNG TIN KHÁCH HÀNG:
+- Họ tên: {ticket['full_name']}
+- Số điện thoại: {ticket['phone'] or 'N/A'}
+- Email: {ticket['email'] or 'N/A'}
+
+THÔNG TIN VÉ:
+- Loại vé: {ticket['ticket_type_name']}
+- Số lượng: {ticket['quantity']}
+- Tổng tiền: {ticket['total_price']:,.0f} VND
+- Ngày tham quan: {ticket['visit_date']}
+- Phương thức thanh toán: {ticket['payment_method']}
+
+THÔNG TIN CHUYỂN KHOẢN:
+- Ngân hàng: ACB
+- Số tài khoản: 0188123987
+- Chủ tài khoản: Nhóm 11 UIT
+- Nội dung: {ticket['ticket_code']}
+- Số tiền: {ticket['total_price']:,.0f} VND
+
+Vui lòng kiểm tra và xác nhận giao dịch!
+
+----------------------------------------
+Hệ thống quản lý Bảo tàng Hồ Chí Minh
+Email: bennharong11@gmail.com
+========================================
+        """
+
+        mail.send(msg)
+        logger.info(f"Email sent for ticket {ticket['ticket_code']}")
+        return api_response(True, "Gửi email thành công")
+    except Exception as e:
+        return handle_error(e, "send_ticket_email")
+
+# ==================== CHECK-IN/CHECK-OUT ENDPOINTS ====================
+@app.route('/api/tickets/<ticket_code>/checkin', methods=['POST'])
+def checkin_ticket(ticket_code):
+    """Check-in ticket"""
+    try:
+        query = """SELECT t.*, c.full_name, c.phone, tt.name as ticket_type_name
+                   FROM tickets t
+                   LEFT JOIN customers c ON t.customer_id = c.id
+                   LEFT JOIN ticket_types tt ON t.ticket_type_id = tt.id
+                   WHERE t.ticket_code = ?"""
+        ticket = fetch_one(query, (ticket_code,))
+
+        if not ticket:
+            return api_response(False, "Không tìm thấy vé"), 404
+
+        if ticket['status'] == 'cancelled':
+            return api_response(False, "Vé đã bị hủy"), 400
+
+        existing = fetch_one(
+            "SELECT * FROM visit_history WHERE ticket_id = ?",
+            (ticket['id'],)
+        )
+
+        if existing:
+            if existing['check_out_time'] is None:
+                return api_response(False, "Vé này đang được sử dụng (chưa check-out)"), 400
+            else:
+                return api_response(False, "Vé này đã được sử dụng"), 400
+
+        check_in_time = datetime.now().isoformat()
+        visit_id = execute_query(
+            "INSERT INTO visit_history (customer_id, ticket_id, check_in_time) VALUES (?, ?, ?)",
+            (ticket['customer_id'], ticket['id'], check_in_time)
+        )
+
+        execute_query(
+            "UPDATE tickets SET status = 'used', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (ticket['id'],)
+        )
+
+        logger.info(f"Check-in SUCCESS: Ticket={ticket_code}, ID={ticket['id']}, Customer={ticket['full_name']}")
+
+        return api_response(True, "Check-in thành công", {
+            'visit_id': visit_id,
+            'ticket': ticket,
+            'check_in_time': check_in_time
+        })
+
+    except Exception as e:
+        return handle_error(e, "checkin_ticket")
+
+@app.route('/api/visits/active', methods=['GET'])
+def get_active_visits():
+    try:
+        query = """SELECT vh.*, c.full_name as customer_name, c.phone as customer_phone,
+                   t.ticket_code, tt.name as ticket_type_name
+                   FROM visit_history vh
+                   LEFT JOIN customers c ON vh.customer_id = c.id
+                   LEFT JOIN tickets t ON vh.ticket_id = t.id
+                   LEFT JOIN ticket_types tt ON t.ticket_type_id = tt.id
+                   WHERE vh.check_out_time IS NULL ORDER BY vh.check_in_time DESC"""
+        visits = fetch_all(query)
+        return api_response(True, "Lấy danh sách khách đang tham quan thành công", visits)
+    except Exception as e:
+        return handle_error(e, "get_active_visits")
+
+@app.route('/api/visits/<int:visit_id>/checkout', methods=['POST'])
+def checkout_visit(visit_id):
+    try:
+        data = request.get_json()
+        visit = fetch_one("SELECT * FROM visit_history WHERE id = ?", (visit_id,))
+
+        if not visit:
+            return api_response(False, "Không tìm thấy lịch sử tham quan"), 404
+        if visit['check_out_time']:
+            return api_response(False, "Đã check-out rồi"), 400
+
+        check_out_time = datetime.now().isoformat()
+        check_in = datetime.fromisoformat(visit['check_in_time'])
+        check_out = datetime.fromisoformat(check_out_time)
+        duration_minutes = int((check_out - check_in).total_seconds() / 60)
+
+        execute_query(
+            """UPDATE visit_history SET check_out_time = ?, duration_minutes = ?, rating = ?, feedback = ? WHERE id = ?""",
+            (check_out_time, duration_minutes, data.get('rating'), data.get('feedback'), visit_id)
+        )
+
+        logger.info(f"Check-out: Visit #{visit_id}, Duration: {duration_minutes} minutes")
+        return api_response(True, "Check-out thành công", {
+            'check_out_time': check_out_time,
+            'duration_minutes': duration_minutes
+        })
+    except Exception as e:
+        return handle_error(e, "checkout_visit")
+
+# ==================== ATTRACTIONS ENDPOINTS ====================
+@app.route('/api/attractions', methods=['GET'])
+def get_attractions():
+    try:
+        floor = request.args.get('floor')
+        if floor:
+            attractions = fetch_all("SELECT * FROM attractions WHERE is_active = 1 AND floor_number = ? ORDER BY id", (floor,))
+        else:
+            attractions = fetch_all("SELECT * FROM attractions WHERE is_active = 1 ORDER BY floor_number, id")
+        return api_response(True, "Lấy danh sách điểm tham quan thành công", attractions)
+    except Exception as e:
+        return handle_error(e, "get_attractions")
+
+# ==================== STATISTICS ENDPOINTS ====================
+@app.route('/api/statistics', methods=['GET'])
+def get_statistics():
+    try:
+        total_tickets = fetch_one("SELECT COUNT(*) as count FROM tickets WHERE status = 'active' OR status = 'used'")
+        total_revenue = fetch_one("SELECT SUM(total_price) as total FROM tickets WHERE status = 'active' OR status = 'used'")
+        total_customers = fetch_one("SELECT COUNT(*) as count FROM customers")
+        total_visits = fetch_one("SELECT COUNT(*) as count FROM visit_history")
+
+        today_tickets = fetch_one("""SELECT COUNT(*) as count, COALESCE(SUM(total_price), 0) as revenue
+                                     FROM tickets WHERE DATE(purchase_date) = DATE('now')""")
+
+        daily_stats = fetch_all("""SELECT DATE(purchase_date) as date, COUNT(*) as tickets, COALESCE(SUM(total_price), 0) as revenue
+                                   FROM tickets WHERE purchase_date >= DATE('now', '-7 days')
+                                   GROUP BY DATE(purchase_date) ORDER BY date DESC""")
+
+        ticket_stats = fetch_all("""SELECT tt.name as ticket_type, COUNT(*) as count, COALESCE(SUM(t.total_price), 0) as revenue
+                                    FROM tickets t JOIN ticket_types tt ON t.ticket_type_id = tt.id
+                                    GROUP BY tt.id, tt.name ORDER BY revenue DESC""")
+
+        stats = {
+            'overview': {
+                'total_tickets': total_tickets['count'] if total_tickets else 0,
+                'total_revenue': total_revenue['total'] if total_revenue and total_revenue['total'] else 0,
+                'total_customers': total_customers['count'] if total_customers else 0,
+                'total_visits': total_visits['count'] if total_visits else 0
+            },
+            'today': {
+                'tickets': today_tickets['count'] if today_tickets else 0,
+                'revenue': today_tickets['revenue'] if today_tickets else 0
+            },
+            'daily_stats': daily_stats,
+            'ticket_stats': ticket_stats
+        }
+        return api_response(True, "Lấy thống kê thành công", stats)
+    except Exception as e:
+        return handle_error(e, "get_statistics")
+
+# ==================== VISIT HISTORY ENDPOINTS ====================
+@app.route('/api/visit-history', methods=['GET'])
+def get_visit_history():
+    try:
+        customer_id = request.args.get('customer_id')
+        date_from = request.args.get('date_from')
+        limit = int(request.args.get('limit', 100))
+
+        query = """SELECT vh.*, c.full_name as customer_name, c.phone as customer_phone,
+                   t.ticket_code, tt.name as ticket_type_name
+                   FROM visit_history vh
+                   LEFT JOIN customers c ON vh.customer_id = c.id
+                   LEFT JOIN tickets t ON vh.ticket_id = t.id
+                   LEFT JOIN ticket_types tt ON t.ticket_type_id = tt.id
+                   WHERE 1=1"""
+        params = []
+
+        if customer_id:
+            query += " AND vh.customer_id = ?"
+            params.append(customer_id)
+        if date_from:
+            query += " AND DATE(vh.check_in_time) >= ?"
+            params.append(date_from)
+
+        query += " ORDER BY vh.check_in_time DESC LIMIT ?"
+        params.append(limit)
+
+        history = fetch_all(query, tuple(params))
+        return api_response(True, "Lấy lịch sử tham quan thành công", history)
+    except Exception as e:
+        return handle_error(e, "get_visit_history")
+
+# ==================== EXPORT ENDPOINTS ====================
+@app.route('/api/export/tickets/csv', methods=['GET'])
+def export_tickets_csv():
+    try:
+        query = """SELECT t.ticket_code, c.full_name, c.phone, tt.name as ticket_type,
+                   t.quantity, t.total_price, t.visit_date, t.payment_method, t.status, t.purchase_date
+                   FROM tickets t LEFT JOIN customers c ON t.customer_id = c.id
+                   LEFT JOIN ticket_types tt ON t.ticket_type_id = tt.id ORDER BY t.purchase_date DESC"""
+        tickets = fetch_all(query)
+
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(['Mã vé', 'Khách hàng', 'SĐT', 'Loại vé', 'Số lượng',
+                        'Tổng tiền', 'Ngày tham quan', 'Thanh toán', 'Trạng thái', 'Ngày tạo'])
+
+        for ticket in tickets:
+            writer.writerow([
+                ticket.get('ticket_code'), ticket.get('full_name'), ticket.get('phone'),
+                ticket.get('ticket_type'), ticket.get('quantity'), ticket.get('total_price'),
+                ticket.get('visit_date'), ticket.get('payment_method'),
+                ticket.get('status'), ticket.get('purchase_date')
+            ])
+
+        output.seek(0)
+        return send_file(
+            io.BytesIO(output.getvalue().encode('utf-8-sig')),
+            mimetype='text/csv', as_attachment=True,
+            download_name=f'tickets_{datetime.now().strftime("%Y%m%d")}.csv'
+        )
+    except Exception as e:
+        return handle_error(e, "export_tickets_csv")
+
+# ==================== BUILDING POINTS API ====================
+@app.route('/api/building-points/<int:contruction_id>', methods=['GET'])
+def get_building_points(contruction_id):
+    """Lấy tọa độ các điểm của công trình"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT longitude, latitude, z, "order"
+            FROM building_points
+            WHERE contruction_id = ?
+            ORDER BY "order"
+        ''', (contruction_id,))
+
+        rows = cursor.fetchall()
+        conn.close()
+
+        if not rows:
+            return jsonify({
+                'success': False,
+                'message': f'Không tìm thấy điểm của công trình {contruction_id}'
+            }), 404
+
+        points = []
+        for row in rows:
+            points.append([row[0], row[1], row[2]])
+
+        return jsonify({
+            'success': True,
+            'contruction_id': contruction_id,
+            'points': points,
+            'total_points': len(points)
+        })
+
+    except Exception as e:
+        logger.error(f"Error getting building points: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': 'Lỗi khi lấy tọa độ'
+        }), 500
+
+@app.route('/api/building-points', methods=['POST'])
+def add_building_points():
+    """Thêm nhiều điểm cho 1 công trình"""
+    try:
+        data = request.get_json()
+
+        if 'contruction_id' not in data or 'points' not in data:
+            return jsonify({
+                'success': False,
+                'message': 'Thiếu contruction_id hoặc points'
+            }), 400
+
+        contruction_id = data['contruction_id']
+        points = data['points']
+
+        if not isinstance(points, list):
+            return jsonify({
+                'success': False,
+                'message': 'points phải là mảng'
+            }), 400
+
+        conn = get_db()
+        cursor = conn.cursor()
+
+        cursor.execute('DELETE FROM building_points WHERE contruction_id = ?', (contruction_id,))
+
+        for idx, point in enumerate(points):
+            if len(point) != 3:
+                return jsonify({
+                    'success': False,
+                    'message': f'Điểm {idx} phải có 3 giá trị [longitude, latitude, z]'
+                }), 400
+
+            cursor.execute('''
+                INSERT INTO building_points (longitude, latitude, z, "order", contruction_id)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (point[0], point[1], point[2], idx + 1, contruction_id))
+
+        conn.commit()
+        conn.close()
+
+        return jsonify({
+            'success': True,
+            'message': f'Đã thêm {len(points)} điểm cho công trình {contruction_id}',
+            'contruction_id': contruction_id,
+            'total_points': len(points)
+        }), 201
+
+    except Exception as e:
+        logger.error(f"Error adding building points: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': 'Lỗi khi thêm điểm'
+        }), 500
+
+@app.route('/api/building-points/<int:contruction_id>', methods=['DELETE'])
+def delete_building_points(contruction_id):
+    """Xóa tất cả điểm của công trình"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+
+        cursor.execute('DELETE FROM building_points WHERE contruction_id = ?', (contruction_id,))
+        deleted_count = cursor.rowcount
+
+        conn.commit()
+        conn.close()
+
+        return jsonify({
+            'success': True,
+            'message': f'Đã xóa {deleted_count} điểm',
+            'contruction_id': contruction_id
+        })
+
+    except Exception as e:
+        logger.error(f"Error deleting building points: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': 'Lỗi khi xóa điểm'
+        }), 500
+
+# ==================== HEALTH CHECK ====================
+@app.route('/health', methods=['GET'])
+def health_check():
+    try:
+        fetch_one("SELECT 1")
+        return jsonify({'status': 'healthy', 'database': 'connected', 'timestamp': datetime.now().isoformat()})
+    except Exception as e:
+        return jsonify({'status': 'unhealthy', 'database': 'disconnected', 'error': str(e), 'timestamp': datetime.now().isoformat()}), 500
+
+# ==================== ERROR HANDLERS ====================
+@app.errorhandler(404)
+def not_found(error):
+    return api_response(False, "Endpoint không tồn tại"), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    return api_response(False, "Lỗi server nội bộ"), 500
+
+# ==================== CUSTOMER REGISTRATION & AUTH ====================
+@app.route('/api/customer/register', methods=['POST'])
+def customer_register():
+    """Customer registration endpoint"""
+    try:
+        data = request.get_json()
+        username = data.get('username', '').strip()
+        password = data.get('password', '')
+        fullname = data.get('fullname', '').strip()
+        phone = data.get('phone', '').strip()
+        email = data.get('email', '').strip()
+        
+        conn = get_db()
+        user_id, error = AuthManager.register_customer(
+            conn, username, password, fullname, phone, email
+        )
+        conn.close()
+        
+        if error:
+            return jsonify({'success': False, 'message': error}), 400
+        
+        # Send confirmation email
+        if email:
+            try:
+                EmailService.send_registration_confirmation(email, username, fullname)
+            except Exception as e:
+                logger.error(f"Failed to send confirmation email: {e}")
+        
+        logger.info(f"New customer registered: {username}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Đăng ký thành công! Vui lòng đăng nhập.',
+            'user_id': user_id
+        }), 201
+        
+    except Exception as e:
+        logger.error(f"Registration error: {str(e)}")
+        return jsonify({'success': False, 'message': 'Lỗi server'}), 500
+
+
+@app.route('/api/customer/login', methods=['POST'])
+def customer_login():
+    """Customer login endpoint"""
+    try:
+        data = request.get_json()
+        username = data.get('username', '').strip()
+        password = data.get('password', '')
+        
+        if not username or not password:
+            return jsonify({
+                'success': False,
+                'message': 'Vui lòng nhập đầy đủ thông tin'
+            }), 400
+        
+        conn = get_db()
+        session_data, error = AuthManager.login_user(conn, username, password, 'customer')
+        conn.close()
+        
+        if error:
+            return jsonify({'success': False, 'message': error}), 401
+        
+        # Generate token
+        token = generate_token(session_data['user_id'], session_data['username'])
+        
+        logger.info(f"Customer login: {username}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Đăng nhập thành công',
+            'token': token,
+            'user': session_data
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Customer login error: {str(e)}")
+        return jsonify({'success': False, 'message': 'Lỗi server'}), 500
+
+
+@app.route('/api/internal/login', methods=['POST'])
+def internal_login():
+    """Internal staff login endpoint"""
+    try:
+        data = request.get_json()
+        username = data.get('username', '').strip()
+        password = data.get('password', '')
+        
+        if not username or not password:
+            return jsonify({
+                'success': False,
+                'message': 'Vui lòng nhập đầy đủ thông tin'
+            }), 400
+        
+        conn = get_db()
+        session_data, error = AuthManager.login_user(conn, username, password, 'internal')
+        conn.close()
+        
+        if error:
+            return jsonify({'success': False, 'message': error}), 401
+        
+        # Generate token
+        token = generate_token(session_data['user_id'], session_data['username'])
+        
+        # Determine redirect based on role
+        role = session_data['role']
+        if role == 'Admin':
+            redirect_url = '/web/admin/'
+        else:
+            redirect_url = '/web/quan-ly/'
+        
+        logger.info(f"Internal login: {username} ({role})")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Đăng nhập thành công',
+            'token': token,
+            'user': session_data,
+            'redirect': redirect_url
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Internal login error: {str(e)}")
+        return jsonify({'success': False, 'message': 'Lỗi server'}), 500
+
+
+# ==================== PASSWORD RESET ====================
+@app.route('/api/password/forgot', methods=['POST'])
+def forgot_password():
+    """Request password reset"""
+    try:
+        data = request.get_json()
+        email = data.get('email', '').strip()
+        
+        if not email:
+            return jsonify({
+                'success': False,
+                'message': 'Vui lòng nhập email'
+            }), 400
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Check if email exists and get username
+        cursor.execute("""
+            SELECT USER_ID, USERNAME, FULLNAME 
+            FROM USER 
+            WHERE EMAIL = ? AND IS_ACTIVE = 1
+        """, (email,))
+        
+        user = cursor.fetchone()
+        
+        if not user:
+            # Don't reveal if email exists or not
+            return jsonify({
+                'success': True,
+                'message': 'Nếu email tồn tại, bạn sẽ nhận được link đặt lại mật khẩu.'
+            }), 200
+        
+        user_id, username, fullname = user
+        
+        # Create reset token
+        token, error = AuthManager.create_password_reset_token(conn, email)
+        conn.close()
+        
+        if error:
+            logger.error(f"Failed to create reset token: {error}")
+            return jsonify({
+                'success': True,  # Still return success to not reveal email existence
+                'message': 'Nếu email tồn tại, bạn sẽ nhận được link đặt lại mật khẩu.'
+            }), 200
+        
+        # Send reset email
+        try:
+            success, email_error = EmailService.send_password_reset_email(
+                email, username, token
+            )
+            if email_error:
+                logger.error(f"Failed to send reset email: {email_error}")
+        except Exception as e:
+            logger.error(f"Email send error: {e}")
+        
+        logger.info(f"Password reset requested for: {email}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Link đặt lại mật khẩu đã được gửi đến email của bạn.'
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Forgot password error: {str(e)}")
+        return jsonify({'success': False, 'message': 'Lỗi server'}), 500
+
+
+@app.route('/api/password/reset', methods=['POST'])
+def reset_password():
+    """Reset password with token"""
+    try:
+        data = request.get_json()
+        token = data.get('token', '').strip()
+        new_password = data.get('new_password', '')
+        
+        if not token or not new_password:
+            return jsonify({
+                'success': False,
+                'message': 'Token và mật khẩu mới là bắt buộc'
+            }), 400
+        
+        conn = get_db()
+        success, error = AuthManager.reset_password_with_token(conn, token, new_password)
+        conn.close()
+        
+        if error:
+            return jsonify({'success': False, 'message': error}), 400
+        
+        logger.info("Password reset successful")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Đặt lại mật khẩu thành công! Vui lòng đăng nhập.'
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Reset password error: {str(e)}")
+        return jsonify({'success': False, 'message': 'Lỗi server'}), 500
+
+
+@app.route('/api/password/change', methods=['POST'])
+@require_auth
+def change_own_password():
+    """Change own password"""
+    try:
+        data = request.get_json()
+        old_password = data.get('old_password', '')
+        new_password = data.get('new_password', '')
+        
+        if not old_password or not new_password:
+            return jsonify({
+                'success': False,
+                'message': 'Vui lòng nhập đầy đủ thông tin'
+            }), 400
+        
+        user_id = request.user['user_id']
+        
+        conn = get_db()
+        success, error = AuthManager.change_password(conn, user_id, old_password, new_password)
+        conn.close()
+        
+        if error:
+            return jsonify({'success': False, 'message': error}), 400
+        
+        logger.info(f"Password changed for user {user_id}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Đổi mật khẩu thành công!'
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Change password error: {str(e)}")
+        return jsonify({'success': False, 'message': 'Lỗi server'}), 500
+
+
+# ==================== ADMIN USER MANAGEMENT ====================
+@app.route('/api/admin/users/internal', methods=['GET'])
+@require_auth
+def get_internal_users():
+    """Get all internal users (Admin only)"""
+    try:
+        # Check admin permission
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        user_id = request.user['user_id']
+        role_name, _ = AuthManager.get_user_role(conn, user_id)
+        
+        if role_name != 'Admin':
+            conn.close()
+            return jsonify({
+                'success': False,
+                'message': 'Không có quyền truy cập'
+            }), 403
+        
+        # Get internal users with roles
+        cursor.execute("""
+            SELECT 
+                u.USER_ID, u.USERNAME, u.EMAIL, u.FULLNAME, u.PHONE,
+                u.IS_ACTIVE, u.LAST_LOGIN, u.CREATED_AT,
+                r.ROLE_NAME, r.ROLE_ID
+            FROM USER u
+            LEFT JOIN USER_ROLE ur ON u.USER_ID = ur.USER_ID
+            LEFT JOIN ROLE r ON ur.ROLE_ID = r.ROLE_ID
+            WHERE u.USER_TYPE = 'internal'
+            ORDER BY u.USER_ID
+        """)
+        
+        users = []
+        for row in cursor.fetchall():
+            users.append({
+                'user_id': row[0],
+                'username': row[1],
+                'email': row[2],
+                'fullname': row[3],
+                'phone': row[4],
+                'is_active': row[5],
+                'last_login': row[6],
+                'created_at': row[7],
+                'role_name': row[8],
+                'role_id': row[9]
+            })
+        
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'data': users,
+            'total': len(users)
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Get internal users error: {str(e)}")
+        return jsonify({'success': False, 'message': 'Lỗi server'}), 500
+
+
+@app.route('/api/admin/users/customers', methods=['GET'])
+@require_auth
+def get_customer_users():
+    """Get all customer users (Admin only)"""
+    try:
+        # Check admin permission
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        user_id = request.user['user_id']
+        role_name, _ = AuthManager.get_user_role(conn, user_id)
+        
+        if role_name != 'Admin':
+            conn.close()
+            return jsonify({
+                'success': False,
+                'message': 'Không có quyền truy cập'
+            }), 403
+        
+        # Get customer users
+        cursor.execute("""
+            SELECT 
+                u.USER_ID, u.USERNAME, u.EMAIL, u.FULLNAME, u.PHONE,
+                u.IS_ACTIVE, u.LAST_LOGIN, u.CREATED_AT,
+                c.CUSTOMER_ID
+            FROM USER u
+            LEFT JOIN CUSTOMER c ON u.USER_ID = c.USER_ID
+            WHERE u.USER_TYPE = 'customer'
+            ORDER BY u.USER_ID DESC
+        """)
+        
+        users = []
+        for row in cursor.fetchall():
+            users.append({
+                'user_id': row[0],
+                'username': row[1],
+                'email': row[2],
+                'fullname': row[3],
+                'phone': row[4],
+                'is_active': row[5],
+                'last_login': row[6],
+                'created_at': row[7],
+                'customer_id': row[8]
+            })
+        
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'data': users,
+            'total': len(users)
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Get customer users error: {str(e)}")
+        return jsonify({'success': False, 'message': 'Lỗi server'}), 500
+
+
+@app.route('/api/admin/users/<int:user_id>', methods=['PUT'])
+@require_auth
+def update_user(user_id):
+    """Update user (Admin only)"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Check admin permission
+        admin_id = request.user['user_id']
+        role_name, _ = AuthManager.get_user_role(conn, admin_id)
+        
+        if role_name != 'Admin':
+            conn.close()
+            return jsonify({
+                'success': False,
+                'message': 'Không có quyền truy cập'
+            }), 403
+        
+        data = request.get_json()
+        
+        # Update user info
+        cursor.execute("""
+            UPDATE USER 
+            SET FULLNAME = ?, EMAIL = ?, PHONE = ?,
+                IS_ACTIVE = ?, UPDATED_AT = ?, UPDATED_BY = ?
+            WHERE USER_ID = ?
+        """, (
+            data.get('fullname'),
+            data.get('email'),
+            data.get('phone'),
+            data.get('is_active', 1),
+            datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            admin_id,
+            user_id
+        ))
+        
+        # Update role if provided
+        if 'role_id' in data:
+            cursor.execute("DELETE FROM USER_ROLE WHERE USER_ID = ?", (user_id,))
+            cursor.execute("""
+                INSERT INTO USER_ROLE (USER_ID, ROLE_ID, ASSIGNED_AT)
+                VALUES (?, ?, ?)
+            """, (user_id, data['role_id'], datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+        
+        conn.commit()
+        conn.close()
+        
+        logger.info(f"User {user_id} updated by admin {admin_id}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Cập nhật thành công'
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Update user error: {str(e)}")
+        return jsonify({'success': False, 'message': 'Lỗi server'}), 500
+
+
+@app.route('/api/admin/users/<int:user_id>', methods=['DELETE'])
+@require_auth
+def delete_user(user_id):
+    """Delete user (Admin only)"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Check admin permission
+        admin_id = request.user['user_id']
+        role_name, _ = AuthManager.get_user_role(conn, admin_id)
+        
+        if role_name != 'Admin':
+            conn.close()
+            return jsonify({
+                'success': False,
+                'message': 'Không có quyền truy cập'
+            }), 403
+        
+        # Cannot delete yourself
+        if user_id == admin_id:
+            conn.close()
+            return jsonify({
+                'success': False,
+                'message': 'Không thể xóa tài khoản của chính mình'
+            }), 400
+        
+        # Delete user
+        cursor.execute("DELETE FROM USER_ROLE WHERE USER_ID = ?", (user_id,))
+        cursor.execute("DELETE FROM USER WHERE USER_ID = ?", (user_id,))
+        
+        conn.commit()
+        conn.close()
+        
+        logger.info(f"User {user_id} deleted by admin {admin_id}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Xóa người dùng thành công'
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Delete user error: {str(e)}")
+        return jsonify({'success': False, 'message': 'Lỗi server'}), 500
+
+
+@app.route('/api/admin/users/<int:user_id>/password', methods=['POST'])
+@require_auth  
+def admin_change_user_password(user_id):
+    """Admin change user password"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Check admin permission
+        admin_id = request.user['user_id']
+        role_name, _ = AuthManager.get_user_role(conn, admin_id)
+        
+        if role_name != 'Admin':
+            conn.close()
+            return jsonify({
+                'success': False,
+                'message': 'Không có quyền truy cập'
+            }), 403
+        
+        data = request.get_json()
+        new_password = data.get('new_password', '')
+        
+        # Validate password
+        is_valid, message = AuthManager.validate_password(new_password)
+        if not is_valid:
+            conn.close()
+            return jsonify({'success': False, 'message': message}), 400
+        
+        # Update password
+        hashed_pwd = AuthManager.hash_password(new_password)
+        cursor.execute("""
+            UPDATE USER 
+            SET PASSWORD = ?, UPDATED_AT = ?, UPDATED_BY = ?
+            WHERE USER_ID = ?
+        """, (
+            hashed_pwd,
+            datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            admin_id,
+            user_id
+        ))
+        
+        conn.commit()
+        conn.close()
+        
+        logger.info(f"Admin {admin_id} changed password for user {user_id}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Đổi mật khẩu thành công'
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Admin change password error: {str(e)}")
+        return jsonify({'success': False, 'message': 'Lỗi server'}), 500
+
+
+# ==================== CUSTOMER TICKET MANAGEMENT ====================
+@app.route('/api/customer/tickets', methods=['GET'])
+@require_auth
+def get_customer_tickets():
+    """Get customer's tickets"""
+    try:
+        user_id = request.user['user_id']
+        page = int(request.args.get('page', 1))
+        per_page = int(request.args.get('per_page', 10))
+        offset = (page - 1) * per_page
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Get customer_id from user_id
+        cursor.execute("SELECT CUSTOMER_ID FROM CUSTOMER WHERE USER_ID = ?", (user_id,))
+        customer = cursor.fetchone()
+        
+        if not customer:
+            conn.close()
+            return jsonify({
+                'success': False,
+                'message': 'Không tìm thấy thông tin khách hàng'
+            }), 404
+        
+        customer_id = customer[0]
+        
+        # Get tickets
+        cursor.execute("""
+            SELECT 
+                t.TICKET_ID, t.TICKET_CODE, t.QUANTITY, t.TOTAL_PRICE,
+                t.VALID_DATE, t.PURCHASE_DATE, t.STATUS, t.PAYMENT_METHOD,
+                tt.TYPE_NAME, tt.PRICE,
+                vh.CHECK_IN_TIME, vh.CHECK_OUT_TIME, vh.RATING
+            FROM TICKET t
+            LEFT JOIN TICKET_TYPE tt ON t.TICKET_TYPE_ID = tt.TICKET_TYPE_ID
+            LEFT JOIN VISIT_HISTORY vh ON t.TICKET_ID = vh.TICKET_ID
+            WHERE t.CUSTOMER_ID = ?
+            ORDER BY t.PURCHASE_DATE DESC
+            LIMIT ? OFFSET ?
+        """, (customer_id, per_page, offset))
+        
+        tickets = []
+        for row in cursor.fetchall():
+            tickets.append({
+                'ticket_id': row[0],
+                'ticket_code': row[1],
+                'quantity': row[2],
+                'total_price': row[3],
+                'valid_date': row[4],
+                'purchase_date': row[5],
+                'status': row[6],
+                'payment_method': row[7],
+                'ticket_type': row[8],
+                'unit_price': row[9],
+                'check_in_time': row[10],
+                'check_out_time': row[11],
+                'rating': row[12]
+            })
+        
+        # Get total count
+        cursor.execute("SELECT COUNT(*) FROM TICKET WHERE CUSTOMER_ID = ?", (customer_id,))
+        total = cursor.fetchone()[0]
+        
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'data': tickets,
+            'pagination': {
+                'page': page,
+                'per_page': per_page,
+                'total': total,
+                'pages': (total + per_page - 1) // per_page
+            }
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Get customer tickets error: {str(e)}")
+        return jsonify({'success': False, 'message': 'Lỗi server'}), 500
+
+
+# ==================== RUN APP ====================
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000, debug=True)
