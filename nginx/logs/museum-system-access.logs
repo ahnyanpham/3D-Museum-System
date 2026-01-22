@@ -1,0 +1,2 @@
+118.69.32.63 - - [16/Dec/2025:14:15:01 +0700] "GET / HTTP/1.1" 403 555 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"
+118.69.32.63 - - [16/Dec/2025:14:15:01 +0700] "GET /favicon.ico HTTP/1.1" 500 579 "http://13.214.39.19:8080/" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"

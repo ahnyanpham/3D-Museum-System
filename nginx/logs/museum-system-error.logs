@@ -1,0 +1,2 @@
+2025/12/16 14:15:01 [error] 3160#0: *1 directory index of "/home/www/museum-system/frontend/" is forbidden, client: 118.69.32.63, server: bennharong, request: "GET / HTTP/1.1", host: "13.214.39.19:8080"
+2025/12/16 14:15:01 [error] 3160#0: *1 rewrite or internal redirection cycle while internally redirecting to "/index.html", client: 118.69.32.63, server: bennharong, request: "GET /favicon.ico HTTP/1.1", host: "13.214.39.19:8080", referrer: "http://13.214.39.19:8080/"

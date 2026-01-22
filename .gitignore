@@ -1,0 +1,15 @@
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Backups
+*backup*
+*_2026*
+
+# Cache
+__pycache__/
+node_modules/
+venv/
+.env
+
