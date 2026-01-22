@@ -1,0 +1,1273 @@
+(function initDragonStation() {
+    require([
+        "esri/Map",
+        "esri/views/SceneView",
+        "esri/layers/GraphicsLayer",
+        "esri/Graphic",
+        "esri/geometry/Polygon",
+        "esri/geometry/Point",
+        "esri/symbols/PolygonSymbol3D",
+        "esri/symbols/ExtrudeSymbol3DLayer",
+        "esri/geometry/geometryEngine",
+        "esri/geometry/Polyline",
+        "esri/geometry/Mesh"
+        ], function(
+        Map, SceneView, GraphicsLayer, Graphic, Polygon, Point,
+        PolygonSymbol3D, ExtrudeSymbol3DLayer, geometryEngine, Polyline, Mesh
+    ) {
+        // LAYER
+        const layer = new GraphicsLayer();
+        const mainCorlor = '#fbc2aa';// màu sắc chính của tòa nhà
+        var boxGraphics = [],// lưu danh sách các graphics của hình hộp
+            polygon3DGraphics = [],// lưu danh sách các graphics của hình đa giác trong không gian 3 chiều
+            polyLineGraphics = [],// lưu danh sách các graphic của đường
+            pointGraphics = [],// lưu danh sách các graphic của điểm
+            cylinderGraphics = [],// lưu danh sách các hình trụ
+            meshItems = [];// lưu danh sách thông tin các glb
+
+        const map = new Map({
+            basemap: "topo-vector",
+            ground: "world-elevation",
+            layers:[layer]
+        });
+
+        const view = new SceneView({
+            container: "viewDiv",
+            map: map,
+            camera: {
+                x: 106.70681,
+                y: 10.76826,
+                z: 150
+            },
+            heading: 0,
+            tilt: 60,
+            qualityProfile: "low",
+            environment: {
+                atmosphereEnabled: false,
+                starsEnabled: false,
+                lighting: {
+                    directShadowsEnabled: false
+                }
+            }
+        });
+
+        /**
+         * add mesh
+         * thêm mesh vào map
+         * glbPath: đường dẫn file glb
+         */
+        function renderMesh(position, glbPath, scale, rotate) {
+            let content = getPointsStr([[position.longitude, position.latitude, position.z]]);
+            Mesh.createFromGLTF(position, glbPath)
+                .then(function (geometry) {
+                    geometry.scale(scale, { origin: position })
+                    geometry.rotate(0, 0, rotate);
+                    const graphic = new Graphic({
+                        geometry,
+                        symbol: {
+                            type: "mesh-3d",
+                            symbolLayers: [{
+                                type: "fill",
+                                size: 10000
+                            }]
+                        },
+                        popupTemplate: {
+                            title: "Mesh",
+                            content: content
+                        }
+                    });
+                    layer.add(graphic);
+                })
+                .catch(console.error);
+        }
+
+        /**
+         * add box
+         * vẽ hình hộp
+         * rings: danh sách các điểm tạo nên đáy của hình hộp
+         * color: màu sắc của hộp
+         * isShowEdge: xác định hiển thị cạnh của hộp
+         */
+        function drawBox(rings, height, color, isShowEdge) {
+            let edges = isShowEdge ? {
+                    type: "solid",       // solid | sketch
+                    color: "black",      // màu viền
+                    size: 1              // độ dày viền (px)
+                } : null;
+            
+            let content = getPointsStr(rings.slice(0, rings.length - 1));
+            boxGraphics.push(new Graphic({
+                geometry: new Polygon({ rings }),
+                symbol: new PolygonSymbol3D({
+                    symbolLayers: [
+                        new ExtrudeSymbol3DLayer({
+                        size: height,
+                        material: { color: color },
+
+                        edges: edges
+                        })
+                    ]
+                    }
+                ),
+                popupTemplate: {
+                    title: "Box",
+                    content: content
+                }
+            }));
+        }
+
+        /**
+         * draw polygon 3D
+         * vẽ đa giác trong không gian 3D
+         * pts: danh sách tọa độ các điểm tạo nên đa giác
+         * corlor: màu sắc của đa giác
+         */
+        function drawPolygon3D(pts, corlor, isShowEdge) {
+            let edges = isShowEdge ? {
+                    type: "solid",       // solid | sketch
+                    color: "black",      // màu viền
+                    size: 1              // độ dày viền (px)
+                } : null;
+            const rect = new Polygon({
+                spatialReference: { wkid: 4326 },
+                rings: pts
+            });
+
+            let content = getPointsStr(pts.slice(0, pts.length - 1));
+            const graphic = new Graphic({
+                geometry: rect,
+                symbol: {
+                type: "polygon-3d",
+                symbolLayers: [{
+                    type: "fill",
+                    material: { color: corlor },
+                    edges: edges
+                }]
+                },
+                popupTemplate: {
+                    title: "Polygon3D",
+                    content: content
+                }
+            });
+            polygon3DGraphics.push(graphic);
+        }
+
+        /**
+         * draw line
+         * vẽ đường
+         * path: danh sách cách điểm tạo nên đường
+         * width: độ rộng của đường
+         * height: chiều cao/chiều dày
+         * color: màu sắc
+         */
+        function drawLine(path, width, height, color) {
+            // Polyline 3D (có Z)
+            const pipeLine = new Polyline({
+                spatialReference: { wkid: 4326 },
+                hasZ: true,
+                paths: [
+                    path
+                ]
+            });
+
+            // Symbol dạng ỐNG (tube)
+            const pipeSymbol = {
+                type: "line-3d",
+                symbolLayers: [{
+                    type: "path",
+                    profile: "circle",// hình tròn → ống
+                    width: width,// đường kính (m)
+                    height: height,
+                    material: {
+                        color: color
+                    },
+                    cap: "round",
+                    join: "round"
+                }]
+            };
+
+            let content = getPointsStr(path);
+            // Graphic
+            const pipeGraphic = new Graphic({
+                geometry: pipeLine,
+                symbol: pipeSymbol,
+                elevationInfo: {
+                    mode: "absolute-height" // Z là cao độ tuyệt đối
+                },
+                popupTemplate: {
+                    title: "Line",
+                    content: content
+                }
+            });
+            polyLineGraphics.push(pipeGraphic);
+        }
+
+        /**
+         * draw point
+         * vẽ điểm
+         * p: tọa độ điểm
+         * name: tên điểm
+         * corlor: màu sắc của điểm
+         * 
+         */
+        function drawPoint(p, name, corlor, width, height, depth) {
+            const point = new Point({
+                x: p[0],
+                y: p[1],
+                z: p[2],
+                spatialReference: { wkid: 4326 }
+            });
+
+            let content = getPointsStr([p]);
+            const graphic = new Graphic({
+                geometry: point,
+                symbol: {
+                    type: "point-3d",
+                    symbolLayers: [{
+                    type: "object",
+                    resource: { primitive: "sphere" },// biểu diễn dạng hình cầu 3D
+                    width: width,
+                    height: height,
+                    depth: depth,
+                    material: { color: corlor }
+                    }]
+                },
+                popupTemplate: {
+                    title: "Point: " + name,
+                    content: content
+                }
+            });
+            pointGraphics.push(graphic);
+        };
+
+        /**
+         * get points str
+         * lấy chuỗi tạo độ danh sách các điểm
+         * points: danh sách các điểm
+         */
+        function getPointsStr(points) {
+            let str = '';
+            let i = 1;
+            points.forEach(p => {
+                str += `point ${i}: <br>&emsp; x: ${p[0]};<br>&emsp; y: ${p[1]};<br>&emsp; z: ${p[2]}<br>`;
+                i++;
+            });
+            return str;
+        }
+
+        /**
+         * Thêm sự kiện click để lấy ra tọa độ tại vị trí click trên bản đổ
+         */
+        view.on("click", function(event) {
+            const screenPoint = event.screenPoint;
+
+            // Gọi view.toMap() đồng bộ, không dùng .then()
+            const mapPoint = view.toMap(screenPoint);
+
+            if (mapPoint) {
+                const longitude = mapPoint.longitude;
+                const latitude = mapPoint.latitude;
+                const altitude = mapPoint.z;
+
+                console.log("------------------------------------");
+                console.log("Tọa độ bản đồ (Long, Lat, Z):", longitude.toFixed(5), latitude.toFixed(5), altitude);
+                console.log("------------------------------------");
+            }
+        });
+
+        /**
+         * distance3D
+         * Tính khoảng cách của 2 điểm trong không gian 2 chiều
+         * p1: điểm 1
+         * p2: điểm 2
+         */
+        function distance2D(p1, p2) {
+            const dx = p2[0] - p1[0];
+            const dy = p2[1] - p1[1];
+            return Math.sqrt(dx*dx + dy*dy);
+        }
+
+        /**
+         * pointAtDistance
+         * Tìm điểm P nằm trên AB, biết độ dài AP, và ab.heigh
+         */
+        function pointAtDistance(A, B, AP, abHeigh) {
+            const AB = distance2D(A, B);
+            const t = AP / AB;
+            abHeigh == abHeigh || 0;
+            return [
+                A[0] + t * (B[0] - A[0]),
+                A[1] + t * (B[1] - A[1]),
+                (A[2] + t * (B[2] - A[2])) + abHeigh
+            ];
+        }
+
+        /**
+         * sub
+         * trừ vecter trên không gian 2 chiều
+         */
+        function sub(a, b) {
+            return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+        }
+
+        /**
+         * add
+         * Hàm cộng vector
+         */
+        function add(a, b) {
+            return [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+        }
+
+        // Nhân vector với số
+        function scale(a, s) {
+            return [a[0] * s, a[1] * s, a[2] * s];
+        }
+
+        // Tích vô hướng
+        function dot(a, b) {
+            return a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
+        }
+
+        // Tích có hướng
+        function cross(a, b) {
+            return [
+                a[1]*b[2] - a[2]*b[1],
+                a[2]*b[0] - a[0]*b[2],
+                a[0]*b[1] - a[1]*b[0]
+            ];
+        }
+
+        // Chuẩn hoá vector
+        function normalize(v) {
+            const len = Math.sqrt(dot(v, v));
+            return scale(v, 1 / len);
+        }
+
+        /**
+         * drawColumn
+         * vẽ cột
+         * startPoint: điểm bắt đầu
+         * endPoint: điểm kết thúc
+         * directionPoint: điểm định hướng
+         * colWidth: chiều rộng mặt đáy của cột
+         * i: cột thứ i
+         * floorHeigh: chiều cao của sàn
+         * colHeight: chiều cao của cột
+         * isLastCol: xác định là cột cuối của dãy
+         * isRoofTop: xác định là tầng mái
+         * isDrawRailingFrame: xác định vẽ lan can
+         */
+        function drawColumn(startPoint, endPoint, directionPoint, colWidth, columnDistance, i, floorHeigh, colHeight, isLastCol, isRoofTop, isDrawRailingFrame) {
+            let length = colWidth;
+            let width = colWidth;
+            let bandLength = width + width/8;
+            let bandWidth = width + width/8;
+            let distanceFroomFirstPoint = 0;
+            if(i == 0) {
+                length = 2*width;
+                bandLength = length + width/8;
+            } else {
+                distanceFroomFirstPoint += 2*width + columnDistance*(i) + width*(i-1);
+            }
+            let columnPoint1 = pointAtDistance(startPoint, endPoint, distanceFroomFirstPoint, floorHeigh);
+            let columnPoint2 = pointAtDistance(startPoint, endPoint, distanceFroomFirstPoint + length, floorHeigh);
+            let columnPoint3 = findC(startPoint, columnPoint2, directionPoint, width);
+            let columnPoint4 = findC(startPoint, columnPoint1, directionPoint, width);
+            let circleStartPoint = pointAtDistance(startPoint, endPoint, distanceFroomFirstPoint + length + columnDistance, floorHeigh);
+            let circleEndPoint = findC(startPoint, circleStartPoint, directionPoint, width);
+            let columnWidthAsMetter = distanceToMetter(columnPoint2, columnPoint3)/2;
+            let R = distanceToMetter(columnPoint2, circleStartPoint)/2;
+            let circleFloorDistance = 5 - R -  columnWidthAsMetter;
+            let whiteBandHeight = 3;
+            if (isRoofTop) {
+                whiteBandHeight = colHeight
+            }
+            let whiteBandPoint1Temp = findC(columnPoint3, columnPoint4, columnPoint1, bandWidth);
+            let whiteBandPoint2Temp = findC(columnPoint4, columnPoint3, columnPoint2, bandWidth);
+            let whiteBandPoint3Temp = findC(columnPoint1, columnPoint2, columnPoint3, bandWidth);
+            let whiteBandPoint4Temp = findC(columnPoint2, columnPoint1, columnPoint4, bandWidth);
+            
+            let whiteBandPoint1 = pointAtDistance(whiteBandPoint2Temp, whiteBandPoint1Temp, bandLength, whiteBandHeight);
+            let whiteBandPoint2 = pointAtDistance(whiteBandPoint1Temp, whiteBandPoint2Temp, bandLength, whiteBandHeight);
+            let whiteBandPoint3 = pointAtDistance(whiteBandPoint4Temp, whiteBandPoint3Temp, bandLength, whiteBandHeight);
+            let whiteBandPoint4 = pointAtDistance(whiteBandPoint3Temp, whiteBandPoint4Temp, bandLength, whiteBandHeight);
+            
+            drawBox([whiteBandPoint1, whiteBandPoint2, whiteBandPoint3, whiteBandPoint4, whiteBandPoint1], 0.1, "#fffff");
+            
+            let bandLinePoint1 = [whiteBandPoint1[0], whiteBandPoint1[1], whiteBandPoint1[2] + 0.1/2];
+            let bandLinePoint2 = [whiteBandPoint2[0], whiteBandPoint2[1], whiteBandPoint2[2] + 0.1/2];
+            let bandLinePoint3 = [whiteBandPoint3[0], whiteBandPoint3[1], whiteBandPoint3[2] + 0.1/2];
+            let bandLinePoint4= [whiteBandPoint4[0], whiteBandPoint4[1], whiteBandPoint4[2] + 0.1/2];
+            drawLine([bandLinePoint1, bandLinePoint2, bandLinePoint3, bandLinePoint4, bandLinePoint1], 0.03, 0.03, '#fffff');
+            
+            // vẽ vòm tên cột nếu không phải là cột cuối của dãy và không là tầng mái
+            if (!isLastCol && !isRoofTop) {
+                // vẽ các vòm trên cột
+                let pts1 = archOnTheColumnRings(columnPoint2, circleStartPoint, circleFloorDistance);// các điểm tạo thành vòng cung mặt ngoài
+                let pts2 = archOnTheColumnRings(columnPoint3, circleEndPoint, circleFloorDistance);// các điểm tạo thành vong cung mặt trong
+                let z = pts1[0][2] + columnWidthAsMetter + R;
+                for (let j = 0; j < pts1.length - 1; j ++) {
+                    // Tính lại các điểm trong vòng cung để vễ lên tường vòng cung theo hướng nghiêng
+                    // có thể hiển thị trong arcgis 3.27
+                    let bottomPoint1 = pointAtDistance(pts1[j], pts2[j], width/10, 0);// cùng hướng với pts1
+                    let bottomPoint2 = pointAtDistance(pts1[j+1], pts2[j+1], width/10, 0);// cùng hướng với pts1
+                    let bottomPoint3 = pointAtDistance(pts2[j+1], pts1[j+1], width/10, 0);// cùng hướng với pts2
+                    let bottomPoint4 = pointAtDistance(pts2[j], pts1[j], width/10, 0);// cùng hướng với pts1
+                    drawPolygon3D([bottomPoint1, bottomPoint2, bottomPoint3, bottomPoint4, bottomPoint1], mainCorlor);
+                    let top1 = [pts1[j][0], pts1[j][1], z];
+                    
+                    let top2 = [pts1[j+ 1][0], pts1[j+ 1][1], z];
+                    drawPolygon3D([bottomPoint1, bottomPoint2, top2, top1, bottomPoint1], mainCorlor);
+                    
+                    let top3 = [pts2[j][0], pts2[j][1], z];
+                    
+                    let top4 = [pts2[j+1][0], pts2[j+1][1], z];
+                    drawPolygon3D([bottomPoint4, bottomPoint3, top4, top3, bottomPoint4], mainCorlor);
+                }
+            }
+            drawBox([columnPoint1, columnPoint2, columnPoint3, columnPoint4, columnPoint1], colHeight, mainCorlor);
+
+            if (isDrawRailingFrame) {
+                let railingStartPoint = pointAtDistance(columnPoint2, columnPoint3, colWidth/2, 0);
+                let nextColumPoint1 = pointAtDistance(columnPoint1, columnPoint2, columnDistance + (i == 0 ? 2*colWidth : colWidth));
+                let nextColumPoint2 = pointAtDistance(columnPoint4, columnPoint3, columnDistance + (i == 0 ? 2*colWidth : colWidth));
+                let railingEndPoint = pointAtDistance(nextColumPoint1, nextColumPoint2, colWidth/2, 0);
+                drawRailingFrame(railingStartPoint, railingEndPoint, 1.5);
+            }
+        }
+
+
+        /**
+         * cal column distance
+         * tính khoảng cách giữa các column
+         * floorWidth: chiều rộng của tầng
+         * colWidth: chiều rộng mặt đáy của cột
+         * colNum: số lượng cột
+         */
+        function calColumnDistance (floorWidth, colWidth, colNum) {
+            return (floorWidth - colWidth*4 -colWidth*(colNum - 2))/(colNum-1);
+        }
+
+        /**
+         * distance To Metter
+         * tính khoảng cách của 2 điểm trong không gian 2D bằng m
+         * A: điểm bắt đầu
+         * B: điểm kết thúc
+         */
+        function distanceToMetter(A, B) {
+            let line = new Polyline({
+                spatialReference: view.spatialReference,
+                paths: [
+                [
+                    [A[0],A[1]],   // x1, y1
+                    [B[0], B[1]]    // x2, y2
+                ]
+                ]
+            });
+            return geometryEngine.geodesicLength(line, "meters");
+        }
+
+        /**
+         * arch on the column rings
+         * tìm các điểm nằm cung tròn tạo ra vòm
+         * A: điểm bắt đầu
+         * B: điểm kết thúc
+         * height: chiều cao của vòm
+         */
+        function archOnTheColumnRings(A, B, height) {
+            let R = distance2D(A, B)/2;// khoảng cách tọa độ
+            let RZ = distanceToMetter(A, B)/2;// khoảng cách met
+            let O = pointAtDistance(A, B, R, 0);// tâm của đường tròn
+            
+            let pts = [];
+            pts.push([A[0], A[1], A[2] + height]);
+            for (let i = 1; i <= 15; i++) {
+                let AX = (R/15)*i;
+                let X = pointAtDistance(A, O, AX, 0);
+                let XO = distanceToMetter(X, O);
+                let XY = Math.sqrt(RZ*RZ -XO*XO);
+                let Y = [X[0], X[1], X[2] + XY + height];
+                pts.push(Y);
+            }
+            for (let i = 1; i < 15; i++) {
+                let OX = (R/15)*i;
+                let X = pointAtDistance(O, B, OX, 0);
+                let OXm = distanceToMetter(O, X);
+                let XY = Math.sqrt(RZ*RZ -OXm*OXm);
+                let Y = [X[0], X[1], X[2] + XY + height];
+                pts.push(Y);
+            }
+            pts.push([B[0], B[1], B[2] + height]);
+            return pts;
+        }
+
+        /**
+         * findC
+         * Tính tọa độ điểm C, biết khoảng cách PC, PC vuông góc với AP, C nằm cùng hướng với B
+         * A: điểm A trên đoạn AP
+         * P: điểm P trên AP, AP vuông góc với CP. C là điểm cần tìm
+         * B: điểm xác định hướng điểm C so với đoạn AP
+         * x: khoảng cách của PC
+         */
+        function findC(A, P, B, x) {
+            const u = sub(P, A);   // AP
+            const v = sub(B, A);   // AB
+
+            const n = cross(u, v); // pháp tuyến mặt phẳng ABP
+            const w = cross(n, u); // vector vuông góc AP, nằm trong mặt phẳng
+
+            let w_norm = normalize(w);
+
+            // Kiểm tra hướng: C phải cùng phía với B
+            if (dot(v, w_norm) < 0) {
+                w_norm = scale(w_norm, -1);
+            }
+
+            // C = P + x * hướng
+            return add(P, scale(w_norm, x));
+        }
+
+        /**
+         * draw door or window
+         * vẽ cửa hoặc cửa sổ
+         * startPoint: điểm bắt đầu
+         * endPoint: điểm kết thúc
+         * directionPoint: điểm xác định hướng
+         * isDrawDoorHandle: xác định có muốn vẽ tay nắm không, nếu vẽ cửa sổ, sẽ ko cần tay n
+         */
+        function drawDoorOrWindow(startPoint, endPoint, directionPoint, heigh, width, doorHandledirection, isDrawDoorHandle) {
+            let length = distance2D(startPoint, endPoint);
+            let colLength = length/6;
+            let startTopPoint = [startPoint[0], startPoint[1], startPoint[2] + heigh];
+            let endTopPoint = [endPoint[0], endPoint[1], endPoint[2] + heigh];
+            
+            let endPointIn = findC(startPoint, endPoint, directionPoint, width);
+            let startPointIn = findC(endPoint, startPoint, directionPoint, width);
+            
+            let startPoint1 = pointAtDistance(startPoint, endPoint, colLength, 0);
+            let endPoint1 = pointAtDistance(endPoint, startPoint, colLength, 0);
+            let lengthMetter = distanceToMetter(startPoint, startPoint1);
+            
+            let endPointIn1 = findC(startPoint1, endPoint1, directionPoint, width);
+            let startPointIn1 = findC(endPoint1, startPoint1, directionPoint, width);
+            
+            let doorCol1 = [startPoint, startPoint1, startPointIn1, startPointIn, startPoint];
+            
+            let doorCol2 = [endPoint1, endPoint, endPointIn, endPointIn1, endPoint1];
+            drawBox(doorCol1, heigh, mainCorlor, true);
+            drawBox(doorCol2, heigh, mainCorlor, true);
+            
+            let bar1Point1 = startPoint1;
+            let bar1Point2 = endPoint1;
+            let bar1Point3 = endPointIn1;
+            let bar1Point4 = startPointIn1;
+            let bar1 = [bar1Point1, bar1Point2, bar1Point3, bar1Point4, bar1Point1];
+            
+            drawBox(bar1, lengthMetter, mainCorlor, true);
+            
+            
+            let board1Point1 = findC(endPoint1, startPoint1, directionPoint, width/2);
+            let board1Point2 = findC(startPoint1, endPoint1, directionPoint, width/2);
+            board1Point1[2] += lengthMetter;
+            board1Point2[2] += lengthMetter;
+            
+            let boardHeight = (heigh - 3*lengthMetter)/2;
+            let board1Point3 = [endPoint1[0], endPoint1[1], endPoint1[2] + boardHeight/2 + lengthMetter];
+            let board1Point4 = [startPoint1[0], startPoint1[1], startPoint1[2] + boardHeight/2 + lengthMetter];
+            let board1Point5 = [board1Point1[0], board1Point1[1], board1Point1[2] + boardHeight];
+            let board1Point6 = [board1Point2[0], board1Point2[1], board1Point2[2] + boardHeight];
+            
+            let board11 = [board1Point1, board1Point2, board1Point3, board1Point4, board1Point1];
+            let board12 = [board1Point4, board1Point3, board1Point6, board1Point5, board1Point4];
+            drawPolygon3D(board11, mainCorlor);
+            drawPolygon3D(board12, mainCorlor);
+            
+            let bar2Point1 = [bar1Point1[0], bar1Point1[1], bar1Point1[2] + lengthMetter + boardHeight];
+            let bar2Point2 = [bar1Point2[0], bar1Point2[1], bar1Point2[2] + lengthMetter + boardHeight];
+            let bar2Point3 = [bar1Point3[0], bar1Point3[1], bar1Point3[2] + lengthMetter + boardHeight];
+            let bar2Point4 = [bar1Point4[0], bar1Point4[1], bar1Point4[2] + lengthMetter + boardHeight];
+            let bar2 = [bar2Point1, bar2Point2, bar2Point3, bar2Point4, bar2Point1];
+            drawBox(bar2, lengthMetter, mainCorlor, true);
+            
+            let bar3Point1 = [bar2Point1[0], bar2Point1[1], bar2Point1[2] + lengthMetter + boardHeight];
+            let bar3Point2 = [bar2Point2[0], bar2Point2[1], bar2Point2[2] + lengthMetter + boardHeight];
+            let bar3Point3 = [bar2Point3[0], bar2Point3[1], bar2Point3[2] + lengthMetter + boardHeight];
+            let bar3Point4 = [bar2Point4[0], bar2Point4[1], bar2Point4[2] + lengthMetter + boardHeight];
+            let bar3 = [bar3Point1, bar3Point2, bar3Point3, bar3Point4, bar3Point1];
+            drawBox(bar3, lengthMetter, mainCorlor, true);
+            
+            
+            let board2Point1 = [board1Point1[0], board1Point1[1], board1Point1[2] + lengthMetter + boardHeight];
+            let board2Point2 = [board1Point2[0], board1Point2[1], board1Point2[2] + lengthMetter + boardHeight];
+            let board2Point3 = [board1Point3[0], board1Point3[1], board1Point3[2] + lengthMetter + boardHeight];
+            let board2Point4 = [board1Point4[0], board1Point4[1], board1Point4[2] + lengthMetter + boardHeight];
+            let board2Point5 = [board1Point5[0], board1Point5[1], board1Point5[2] + lengthMetter + boardHeight];
+            let board2Point6 = [board1Point6[0], board1Point6[1], board1Point6[2] + lengthMetter + boardHeight];
+            let board21 = [board2Point1, board2Point2, board2Point3, board2Point4, board2Point1];
+            let board22 = [board2Point4, board2Point3, board2Point6, board2Point5, board2Point4];
+            drawPolygon3D(board21, mainCorlor);
+            drawPolygon3D(board22, mainCorlor);
+            // vẽ tay nắm cửa
+            if (isDrawDoorHandle) {
+                let doorHandleCenterPoint;
+                let doorHandleStartPoint;
+                if (doorHandledirection == startPoint) {
+                    let tempPoint = pointAtDistance(startPoint, endPoint, colLength/2, 0);
+                    doorHandleCenterPoint = findC(startPoint, tempPoint, startPointIn, width/2);
+                    doorHandleStartPoint = findC(startPoint, tempPoint, startPointIn, width + colLength/2);
+                } else {
+                    let tempPoint = pointAtDistance(endPoint, startPoint, colLength/2, 0);
+                    doorHandleCenterPoint = findC(endPoint, tempPoint, endPointIn, width/2);
+                    doorHandleStartPoint = findC(endPoint, tempPoint, endPointIn, width + colLength/2);
+                }
+                let doorHandleEndPoint = pointAtDistance(doorHandleStartPoint, doorHandleCenterPoint, colLength + width, 0);
+                
+                doorHandleStartPoint[2] += heigh/2;
+                doorHandleEndPoint[2] += heigh/2;
+                drawLine([doorHandleStartPoint, doorHandleEndPoint], 0.03, 0.03, "#f2e6d9");
+                drawPoint(doorHandleStartPoint, "Point", "#f2e6d9", 0.07, 0.08, 0.06);
+                drawPoint(doorHandleEndPoint, "Point", "#f2e6d9", 0.07, 0.08, 0.06);
+            }
+        }
+
+        /**
+         * draw ventilation
+         * vẽ thông gió
+         * startPoint: điểm bắt đầu
+         * endPoint: điểm kết thúc
+         * directionPoint: điểm xác định hướng
+         */
+        function drawVentilation(startPoint, endPoint, directionPoint, heigh, width) {
+            let length = distance2D(startPoint, endPoint);
+            let colLength = length/12;
+            let startTopPoint = [startPoint[0], startPoint[1], startPoint[2] + heigh];
+            let endTopPoint = [endPoint[0], endPoint[1], endPoint[2] + heigh];
+            
+            let endPointIn = findC(startPoint, endPoint, directionPoint, width);
+            let startPointIn = findC(endPoint, startPoint, directionPoint, width);
+            
+            let startPoint1 = pointAtDistance(startPoint, endPoint, colLength, 0);
+            let endPoint1 = pointAtDistance(endPoint, startPoint, colLength, 0);
+            let lengthMetter = distanceToMetter(startPoint, startPoint1);
+            
+            let endPointIn1 = findC(startPoint1, endPoint1, directionPoint, width);
+            let startPointIn1 = findC(endPoint1, startPoint1, directionPoint, width);
+            
+            let doorCol1 = [startPoint, startPoint1, startPointIn1, startPointIn, startPoint];
+            
+            let doorCol2 = [endPoint1, endPoint, endPointIn, endPointIn1, endPoint1];
+            // vẽ khung cột 1 của thông gió
+            drawBox(doorCol1, heigh, mainCorlor, true);
+            // vẽ khung cột 2 của thông gió
+            drawBox(doorCol2, heigh, mainCorlor, true);
+            
+            let bar1Point1 = startPoint1;
+            let bar1Point2 = endPoint1;
+            let bar1Point3 = endPointIn1;
+            let bar1Point4 = startPointIn1;
+            let bar1 = [bar1Point1, bar1Point2, bar1Point3, bar1Point4, bar1Point1];
+            // vẽ khung của thông gió
+            drawBox(bar1, lengthMetter*1.5, mainCorlor, true);
+            
+            let boardHeight = (heigh - 2*lengthMetter*1.5);
+            
+            let bar2Point1 = [bar1Point1[0], bar1Point1[1], bar1Point1[2] + lengthMetter*1.5 + boardHeight];
+            let bar2Point2 = [bar1Point2[0], bar1Point2[1], bar1Point2[2] + lengthMetter*1.5 + boardHeight];
+            let bar2Point3 = [bar1Point3[0], bar1Point3[1], bar1Point3[2] + lengthMetter*1.5 + boardHeight];
+            let bar2Point4 = [bar1Point4[0], bar1Point4[1], bar1Point4[2] + lengthMetter*1.5 + boardHeight];
+            let bar2 = [bar2Point1, bar2Point2, bar2Point3, bar2Point4, bar2Point1];
+            // vẽ khung của thông gió
+            drawBox(bar2, lengthMetter*1.5, mainCorlor, true);
+            
+            // vẽ các khe thông gió
+            let ventilationSlotDistance = boardHeight/24;
+            for (let i = 0; i < 12; i++) {
+                let ventilationSlotPoint1 = [bar1Point1[0], bar1Point1[1], bar1Point1[2] + ventilationSlotDistance*i*2 + lengthMetter*1.5];
+                let ventilationSlotPoint2 = [bar1Point2[0], bar1Point2[1], bar1Point2[2] + ventilationSlotDistance*i*2 + lengthMetter*1.5];
+                let ventilationSlotPoint3 = [bar1Point3[0], bar1Point3[1], bar1Point3[2] + ventilationSlotDistance*(i*2 + 1.8) + lengthMetter*1.5];
+                let ventilationSlotPoint4 = [bar1Point4[0], bar1Point4[1], bar1Point4[2] + ventilationSlotDistance*(i*2 + 1.8) + lengthMetter*1.5];
+                let ventilationSlotPoints = [ventilationSlotPoint1, ventilationSlotPoint2, ventilationSlotPoint3, ventilationSlotPoint4, ventilationSlotPoint1];
+                drawPolygon3D(ventilationSlotPoints, mainCorlor);
+            }
+        }
+
+        /**
+         * draw floor
+         * vẽ tầng nhà
+         * floor: danh sách các điểm để cấu thành đáy của tầng
+         * floorHeigh: chiều cao của tầng
+         * colHeight: chiều cao của cột
+         * wallHeight: chiều cao của tường
+         * isRoofTop: xác định có phải là tầng mái không
+         * isFirstFloor: xác định là tầng trệt
+         * isDrawStair: xác định vẽ cầu thang
+         */
+        function drawFloor(floor, floorHeigh, colHeight, wallHeight, isRoofTop, isFirstFloor, isDrawStair) {
+            let floorPoint1 = floor[0];
+            let floorPoint2 = floor[1];
+            let floorPoint3 = floor[2];
+            let floorPoint4 = floor[3];
+            drawBox(floor, floorHeigh, "#f2e6d9");
+            
+            let floorWidth = distance2D(floorPoint1, floorPoint2);
+            let colNum = 8;
+            const colZ = floorPoint1[2] + floorHeigh;
+            
+            
+            let colWidth = floorWidth/((colNum-1)*6);
+            let colmDistance = calColumnDistance(floorWidth, colWidth, colNum);
+            let colmDistance1 = colmDistance;
+            for (let i = 0; i < colNum; i++) {
+                let width = colWidth;
+                let isDrawRailingFrame = true;
+                
+                if (i == colNum - 1) {
+                    isDrawRailingFrame = false;
+                    drawColumn(floorPoint2, floorPoint1, floorPoint3, colWidth, colmDistance, 0, floorHeigh, colHeight, true, isRoofTop, isDrawRailingFrame);
+                } else {
+                    // không vẽ lan can ở giữa, để chỗ cho bậc thang
+                    if ((i+1) == colNum/2 && isFirstFloor) {
+                        isDrawRailingFrame = false;
+                    }
+                    drawColumn(floorPoint1, floorPoint2, floorPoint4, colWidth, colmDistance, i, floorHeigh, colHeight, false, isRoofTop, isDrawRailingFrame);
+                }
+
+                if (isDrawStair && (i+1) == colNum/2){
+                    let startStairPoint = pointAtDistance(floorPoint1, floorPoint2, i*colmDistance + 2*colWidth + (i-1)*colWidth, 0);
+                    let endStairPoint = pointAtDistance(startStairPoint, floorPoint2, colmDistance + 2*colWidth, 0);
+                    drawStair(startStairPoint, endStairPoint, floorPoint4, colWidth, floorHeigh);
+                }
+            }
+            
+            floorWidth = distance2D(floorPoint3, floorPoint4);
+            colmDistance = calColumnDistance(floorWidth, colWidth, colNum);
+            let colmDistance2 = colmDistance;
+            for (let i = 0; i < colNum; i++) {
+                let width = colWidth;
+                let isDrawRailingFrame = true;
+                
+                if (i == colNum - 1) {
+                    isDrawRailingFrame = false;
+                    drawColumn(floorPoint4, floorPoint3, floorPoint1, colWidth, colmDistance, 0, floorHeigh, colHeight, true, isRoofTop, isDrawRailingFrame);
+                } else {
+                    // không vẽ lan can ở giữa, để chỗ cho bậc thang
+                    if ((i+1) == colNum/2 && isFirstFloor) {
+                        isDrawRailingFrame = false;
+                    }
+                    drawColumn(floorPoint3, floorPoint4, floorPoint2, colWidth, colmDistance, i, floorHeigh, colHeight, false, isRoofTop, isDrawRailingFrame);
+                }
+                // vẽ bậc ở giữa
+                if (isDrawStair && (i+1) == colNum/2){
+                    let startStairPoint = pointAtDistance(floorPoint3, floorPoint4, i*colmDistance + 2*colWidth + (i-1)*colWidth, 0);
+                    let endStairPoint = pointAtDistance(startStairPoint, floorPoint4, colmDistance + 2*colWidth, 0);
+                    drawStair(startStairPoint, endStairPoint, floorPoint1, colWidth, floorHeigh);
+                }
+            }
+            floorWidth = distance2D(floorPoint2, floorPoint3);
+            colNum = 10;
+            colmDistance = calColumnDistance(floorWidth, colWidth, colNum);
+            let colmDistance3 = colmDistance;
+            for (let i = 0; i < colNum; i++) {
+                let width = colWidth;
+                let isDrawRailingFrame = true;
+
+                if (i == colNum - 1) {
+                    isDrawRailingFrame = false;
+                    drawColumn(floorPoint3, floorPoint2, floorPoint4, colWidth, colmDistance, 0, floorHeigh, colHeight, true, isRoofTop, isDrawRailingFrame);
+                } else {
+                    // không vẽ lan can ở giữa, để chỗ cho bậc thang
+                    if ((i+1) == colNum/2 && isFirstFloor) {
+                        isDrawRailingFrame = false;
+                    }
+                    drawColumn(floorPoint2, floorPoint3, floorPoint1, colWidth, colmDistance, i, floorHeigh, colHeight, false, isRoofTop, isDrawRailingFrame);
+                }
+                if (isDrawStair && (i+1) == colNum/2){
+                    let startStairPoint = pointAtDistance(floorPoint2, floorPoint3, i*colmDistance + 2*colWidth + (i-1)*colWidth, 0);
+                    let endStairPoint = pointAtDistance(startStairPoint, floorPoint3, colmDistance + 2*colWidth, 0);
+                    drawStair(startStairPoint, endStairPoint, floorPoint4, colWidth, floorHeigh);
+                }
+            }
+            floorWidth = distance2D(floorPoint4, floorPoint1);
+            colmDistance = calColumnDistance(floorWidth, colWidth, colNum);
+            let colmDistance4 = colmDistance;
+            for (let i = 0; i < colNum; i++) {
+                let width = colWidth;
+                let isDrawRailingFrame = true;
+                
+                if (i == colNum - 1) {
+                    isDrawRailingFrame = false;
+                    drawColumn(floorPoint1, floorPoint4, floorPoint2, colWidth, colmDistance, 0, floorHeigh, colHeight, true, isRoofTop, isDrawRailingFrame);
+                } else {
+                    // không vẽ lan can ở giữa, để chỗ cho bậc thang
+                    if ((i+1) == colNum/2 && isFirstFloor) {
+                        isDrawRailingFrame = false;
+                    }
+                    drawColumn(floorPoint4, floorPoint1, floorPoint3, colWidth, colmDistance, i, floorHeigh, colHeight, false, isRoofTop, isDrawRailingFrame);
+                }
+                if (isDrawStair && (i+1) == colNum/2){
+                    let startStairPoint = pointAtDistance(floorPoint4, floorPoint1, i*colmDistance + 2*colWidth + (i-1)*colWidth, 0);
+                    let endStairPoint = pointAtDistance(startStairPoint, floorPoint1, colmDistance + 2*colWidth, 0);
+                    drawStair(startStairPoint, endStairPoint, floorPoint2, colWidth, floorHeigh);
+                }
+            }
+            
+            // vẽ phòng lớn
+            let roomPoint1Mapping = pointAtDistance(floorPoint1, floorPoint2, colmDistance1 + colWidth*2, 0);
+            let roomPoint1 = findC(floorPoint1, roomPoint1Mapping, floorPoint4, colmDistance4 +colWidth*2);
+            let roomPoint2Mapping = pointAtDistance(floorPoint2, floorPoint1, colmDistance1 + colWidth*2, 0);
+            let roomPoint2 = findC(floorPoint2, roomPoint2Mapping, floorPoint3, colmDistance2 +colWidth*2);
+            
+            let roomPoint3Mapping = pointAtDistance(floorPoint3, floorPoint4, colmDistance3 + colWidth*2, 0);
+            let roomPoint3 = findC(floorPoint3, roomPoint3Mapping, floorPoint2, colmDistance2 +colWidth*2);
+            let roomPoint4Mapping = pointAtDistance(floorPoint4, floorPoint3, colmDistance3 + colWidth*2, 0);
+            let roomPoint4 = findC(floorPoint4, roomPoint4Mapping, floorPoint1, colmDistance4 +colWidth*2);
+            
+            roomPoint1[2] = roomPoint1[2] + floorHeigh;
+            roomPoint2[2] = roomPoint2[2] + floorHeigh;
+            roomPoint3[2] = roomPoint3[2] + floorHeigh;
+            roomPoint4[2] = roomPoint4[2] + floorHeigh;
+
+            let doorNum = 5;
+            let doorWidth = colWidth/8;
+            let doorHeight = 3.5;
+            let wall1Length = distance2D(roomPoint1Mapping, roomPoint2Mapping);
+            let doorDistance = (wall1Length)/(doorNum);
+            let windowSillHeight = 0;
+            let ventilationHeight = doorHeight/5;
+            let isDrawDoorHandle = true;
+            
+            drawWallAndDoor(roomPoint1, roomPoint2, roomPoint3, roomPoint4, colWidth, wall1Length, doorNum, wallHeight, isRoofTop);
+            
+            let wall3Length = distance2D(roomPoint3, roomPoint4);
+            drawWallAndDoor(roomPoint3, roomPoint4, roomPoint1, roomPoint2, colWidth, wall3Length, doorNum, wallHeight, isRoofTop);
+
+            let wall2Length = distance2D(roomPoint2, roomPoint3);
+            doorNum = 7;
+            drawWallAndDoor(roomPoint2, roomPoint3, roomPoint4, roomPoint1, colWidth, wall2Length, doorNum, wallHeight, isRoofTop);
+            
+            let wall4Length = distance2D(roomPoint4, roomPoint1);
+            wall1Length = distance2D(roomPoint4Mapping, roomPoint1Mapping);
+            drawWallAndDoor(roomPoint4, roomPoint1, roomPoint2, roomPoint3, colWidth, wall2Length, doorNum, wallHeight, isRoofTop);
+
+            if (isRoofTop) {
+                drawRoof(floorPoint1, floorPoint2, floorPoint3, floorPoint4, colmDistance1, colmDistance2, colmDistance3, colmDistance4, colWidth, floorHeigh, wallHeight);
+            }
+        }
+
+        /**
+         * draw roof
+         * floorPoint1: điểm góc bắt đầu của tầng
+         * floorPoint2: điểm góc thứ 2
+         * floorPoint3: điểm góc thứ 3
+         * floorPoint4: điểm góc thứ 4
+         * colmDistance1: khoảng cách giữa các cột của tường thứ 1
+         * colmDistance2: khoảng cách giữa các cột của tường thứ 2
+         * colmDistance3: khoảng cách giữa các cột của tường thứ 3
+         * colmDistance4: khoảng cách giữa các cột của tường thứ 4
+         * colWidth: chiều rộng của cột
+         * floorHeigh: chiều cao sàn nhà của tầng
+         * wallHeight: chiều cao của tường
+         */
+        function drawRoof(floorPoint1, floorPoint2, floorPoint3, floorPoint4, colmDistance1, colmDistance2, colmDistance3, colmDistance4, colWidth, floorHeigh, wallHeight) {
+            let ceilingPoint1Mapping = pointAtDistance(floorPoint1, floorPoint4, colmDistance1 + colWidth, 0);
+            let ceilingPoint1 = findC(floorPoint1, ceilingPoint1Mapping, floorPoint3, colmDistance4 +colWidth);
+            ceilingPoint1[2] += floorHeigh + wallHeight;
+            
+            let ceilingPoint2Mapping = pointAtDistance(floorPoint4, floorPoint3, colmDistance1 + colWidth, 0);
+            let ceilingPoint2 = findC(floorPoint4, ceilingPoint2Mapping, floorPoint2, colmDistance2 +colWidth);
+            ceilingPoint2[2] += floorHeigh + wallHeight;
+            
+            let ceilingPoint3Mapping = pointAtDistance(floorPoint3, floorPoint2, colmDistance3 + colWidth, 0);
+            let ceilingPoint3 = findC(floorPoint3, ceilingPoint3Mapping, floorPoint1, colmDistance2 +colWidth);
+            ceilingPoint3[2] += floorHeigh + wallHeight;
+            
+            let ceilingPoint4Mapping = pointAtDistance(floorPoint2, floorPoint1, colmDistance3 + colWidth, 0);
+            let ceilingPoint4 = findC(floorPoint2, ceilingPoint4Mapping, floorPoint4, colmDistance4 +colWidth);
+            ceilingPoint4[2] += floorHeigh + wallHeight;
+            let ceiling = [ceilingPoint1, ceilingPoint2, ceilingPoint3, ceilingPoint4, ceilingPoint1];
+            drawPolygon3D(ceiling, "#f2e6d9");// vẽ trần nhà
+            
+            let roofFootPoint1 = pointAtDistance(ceilingPoint1, ceilingPoint2, colmDistance1, 0); 
+            let roofFootPoint2 = pointAtDistance(ceilingPoint2, ceilingPoint1, colmDistance1, 0);
+            let roofFootPoint3 = pointAtDistance(ceilingPoint3, ceilingPoint4, colmDistance3, 0);
+            let roofFootPoint4 = pointAtDistance(ceilingPoint4, ceilingPoint3, colmDistance3, 0);
+            let roofMidPoint1 = pointAtDistance(roofFootPoint1, roofFootPoint4, colmDistance4, 2);
+            let roofMidPoint2 = pointAtDistance(roofFootPoint2, roofFootPoint3, colmDistance2, 2);
+            let roofMidPoint3 = pointAtDistance(roofFootPoint3, roofFootPoint2, colmDistance2, 2);
+            let roofMidPoint4 = pointAtDistance(roofFootPoint4, roofFootPoint1, colmDistance4, 2);
+            let roofMidWidth1 = distance2D(roofMidPoint1, roofMidPoint4);
+            let roofHeadPoint1 = pointAtDistance(roofMidPoint1, roofMidPoint4, roofMidWidth1/2, 4);
+            let roofMidWidth2 = distance2D(roofMidPoint2, roofMidPoint3);
+            let roofHeadPoint2 = pointAtDistance(roofMidPoint2, roofMidPoint3, roofMidWidth2/2, 4);
+            
+            drawPolygon3D([ceilingPoint1, roofMidPoint1, roofMidPoint4, ceilingPoint4, ceilingPoint1], mainCorlor);
+            drawPolygon3D([roofMidPoint1, roofHeadPoint1, roofMidPoint4, roofMidPoint1], "#f2e6d9");
+            drawPolygon3D([ceilingPoint2, roofMidPoint2, roofMidPoint3, ceilingPoint3, ceilingPoint2], mainCorlor);
+            drawPolygon3D([roofMidPoint2, roofHeadPoint2, roofMidPoint3, roofMidPoint2], "#f2e6d9");
+            
+            drawPolygon3D([ceilingPoint1, ceilingPoint2 , roofMidPoint2, roofMidPoint1, ceilingPoint1], mainCorlor);
+            drawPolygon3D([roofMidPoint1, roofMidPoint2, roofHeadPoint2, roofHeadPoint1, roofMidPoint1], mainCorlor);
+            drawPolygon3D([ceilingPoint3, roofMidPoint3, roofMidPoint4, ceilingPoint4, ceilingPoint3], mainCorlor);
+            drawPolygon3D([roofMidPoint4, roofMidPoint3, roofHeadPoint2, roofHeadPoint1, roofMidPoint4], mainCorlor);
+            
+            drawLine([ceilingPoint1, roofMidPoint1, roofHeadPoint1,roofMidPoint4, ceilingPoint4], 0.08, 0.4, '#fffff');
+            drawLine([ceilingPoint2, roofMidPoint2, roofHeadPoint2,roofMidPoint3, ceilingPoint3], 0.08, 0.4, '#fffff');
+            drawLine([roofMidPoint1,roofMidPoint4], 0.08, 0.4, '#fffff');
+            drawLine([roofMidPoint2,roofMidPoint3], 0.08, 0.4, '#fffff');
+            drawLine([roofHeadPoint1,roofHeadPoint2], 1, 0.4, '#fffff');
+            let dragon1Position = pointAtDistance(roofHeadPoint1, roofHeadPoint2, colmDistance1/2, 0);
+            let dragon1Point = new Point({
+                    longitude: dragon1Position[0],
+                    latitude: dragon1Position[1],
+                    z: dragon1Position[2]+0.8,
+                });
+            let dragon2Position = pointAtDistance(roofHeadPoint2, roofHeadPoint1, colmDistance1/2, 0);
+            let dragon2Point = new Point({
+                    longitude: dragon2Position[0],
+                    latitude: dragon2Position[1],
+                    z: dragon2Position[2] + 0.8
+                });
+            meshItems.push({position: dragon1Point, path: "/3d-map/models/dragon.glb", scale: 1, rotate: 295});
+            meshItems.push({position: dragon2Point, path: "/3d-map/models/dragon.glb", scale: 1, rotate: 116});
+        }
+
+        /**
+         * draw wall and door
+         * vẽ tường và cửa
+         * Phòng sẽ có 4 điểm:
+         * roomPoint1: điểm bắt đầu
+         * roomPoint2: điểm thứ 2
+         * roomPoint3: điểm thứ 3
+         * roomPoint4: điểm kết thúc
+         * => vẽ tường và cửa trên tường của roomPoint1 và roomPoint2
+         * => các roomPoint còn lại sẽ là điểm xác định hướng
+         * colWidth: chiều rộng dáy cột, dùng để tính chiều rộng mặt đáy của cửa
+         * wallLength: chiều dài của bức tường
+         * doorNum: số lượng cánh cửa
+         * wallHeight: chiều cao của tường
+         * isRoofTop: nếu vẽ tằng mái thì sẽ vẽ theo logic khác
+         */
+        function drawWallAndDoor(roomPoint1, roomPoint2, roomPoint3, roomPoint4, colWidth, wallLength, doorNum, wallHeight, isRoofTop) {
+            let doorWidth = colWidth/8;
+            let doorHeight = 3.5;
+            let doorDistance = (wallLength)/(doorNum);
+            let windowSillHeight = 0;
+            let ventilationHeight = doorHeight/5;
+            let isDrawDoorHandle = true;
+            
+            for (let j = 0; j < doorNum; j++) {
+                let startPointTemp = pointAtDistance(roomPoint1, roomPoint2, doorDistance*j + doorDistance/3, 0);
+                let middlePointTemp = pointAtDistance(startPointTemp, roomPoint2, doorDistance/6, 0);
+                let endPointTemp = pointAtDistance(startPointTemp, roomPoint2, doorDistance/3, 0);
+                let startPoint = [startPointTemp[0], startPointTemp[1], startPointTemp[2]];
+                let middlePoint = [middlePointTemp[0], middlePointTemp[1], middlePointTemp[2]];
+                let endPoint = [endPointTemp[0], endPointTemp[1], endPointTemp[2]];
+                let roomPoint1Temp = [roomPoint1[0], roomPoint1[1], roomPoint1[2]];
+                let roomPoint2Temp = [roomPoint2[0], roomPoint2[1], roomPoint2[2]];
+                let roomPoint3Temp = [roomPoint3[0], roomPoint3[1], roomPoint3[2]];
+                let roomPoint4Temp = [roomPoint4[0], roomPoint4[1], roomPoint4[2]];
+                if (isRoofTop && j != Math.trunc(doorNum/2)) {
+                    windowSillHeight = 3.5/2;
+                    roomPoint1Temp[2] += windowSillHeight;
+                    roomPoint2Temp[2] += windowSillHeight;
+                    roomPoint3Temp[2] += windowSillHeight;
+                    roomPoint4Temp[2] += windowSillHeight;
+                    startPointTemp[2] += windowSillHeight;
+                    middlePointTemp[2] += windowSillHeight;
+                    endPointTemp[2] += windowSillHeight;
+                    doorHeight = 3.5/2;
+                    isDrawDoorHandle = false;
+                } else {
+                    doorHeight = 3.5;
+                    windowSillHeight = 0;
+                    isDrawDoorHandle = true;
+                }
+                drawDoorOrWindow(startPointTemp, middlePointTemp, roomPoint3Temp, doorHeight, doorWidth, null, isDrawDoorHandle);
+                drawDoorOrWindow(middlePointTemp, endPointTemp, roomPoint3Temp, doorHeight, doorWidth, middlePointTemp, isDrawDoorHandle);
+                startPoint[2] += doorHeight;
+                endPoint[2] += doorHeight;
+                startPointTemp[2] += doorHeight;
+                endPointTemp[2] += doorHeight;
+                
+                let C = [roomPoint3Temp[0], roomPoint3Temp[1], roomPoint3Temp[2] + doorHeight];
+                drawVentilation(startPointTemp, endPointTemp, C, ventilationHeight, doorWidth);
+                
+                startPoint[2] -= doorHeight;
+                let wallSub1Point1 = pointAtDistance(roomPoint1, roomPoint2, doorDistance*j, 0);
+                let wallSub1Point2 = startPoint;
+                let wallSub1Point3= findC(wallSub1Point1, wallSub1Point2, roomPoint3, colWidth/4, 0);
+                let wallSub1Point4= findC(wallSub1Point2, wallSub1Point1, roomPoint3, colWidth/4, 0);
+                let wallSub1 = [wallSub1Point1, wallSub1Point2, wallSub1Point3, wallSub1Point4, wallSub1Point1];
+                drawBox(wallSub1, doorHeight + ventilationHeight + windowSillHeight, mainCorlor);
+                endPoint[2] -= doorHeight;
+                let wallSub2Point1 = endPoint;
+                let wallSub2Point2 = pointAtDistance(roomPoint1, roomPoint2, doorDistance*(j + 1), 0);;
+                let wallSub2Point3= findC(wallSub2Point1, wallSub2Point2, roomPoint3, colWidth/4, 0);
+                let wallSub2Point4= findC(wallSub2Point2, wallSub2Point1, roomPoint3, colWidth/4, 0);
+                let wallSub2 = [wallSub2Point1, wallSub2Point2, wallSub2Point3, wallSub2Point4, wallSub2Point1];
+                drawBox(wallSub2, doorHeight + ventilationHeight + windowSillHeight, mainCorlor);
+                
+                if (windowSillHeight > 0) {
+                    drawBox([wallSub1Point1, wallSub2Point2, wallSub2Point3, wallSub1Point4, wallSub1Point1], windowSillHeight, mainCorlor);
+                }
+                wallSub1Point1[2] += doorHeight + ventilationHeight + windowSillHeight;
+                wallSub1Point4[2] += doorHeight + ventilationHeight + windowSillHeight;
+                wallSub2Point3[2] += doorHeight + ventilationHeight + windowSillHeight;
+                wallSub2Point2[2] += doorHeight + ventilationHeight + windowSillHeight;
+                let wallTop = [wallSub1Point1, wallSub2Point2, wallSub2Point3, wallSub1Point4, wallSub1Point1]
+                drawBox(wallTop, wallHeight - (doorHeight + ventilationHeight + windowSillHeight), mainCorlor);
+            }
+        }
+
+        /**
+         * load NTT statue
+         * thêm tượng Nguyết Tất Thành vào bản đồ
+         * point: vị trí của tượng
+         */
+        function loadNTTStatue(point) {
+            const position = new Point({
+            longitude: point[0],
+            latitude: point[1],
+            z: point[2]
+            });
+            meshItems.push({ position: position, path: "/3d-map/models/tuong_nguyen_tat_thanh.glb", scale: 4.5, rotate: 238});// nguồn: https://sketchfab.com/3d-models/tuong-nguyen-tat-thanh-8da3fb1dd7084622a81560fb35f39d12
+            // vẽ chân tượng
+            drawCylinder(point, 5, 0.2, "#d9c5a0");
+            drawCylinder(point, 4.7, 0.4, "#d9c5a0");
+            drawCylinder(point, 4.4, 0.6, "#d9c5a0");
+        }
+
+        /**
+         * create circle rings
+         * tạo các điểm trên đường tròn
+         * cx: tọa độ x của tâm
+         * cy: tọa độ y của tâm
+         * radiusMeters: bán kính tính bằng m
+         * segments: số lượng đoạn thẳng trên đường tròn
+         */
+        function createCircleRings(cx, cy, radiusMeters, segments = 64) {
+            const R = radiusMeters / 111320; // mét → độ
+            const ring = [];
+
+            for (let i = 0; i <= segments; i++) {
+                const angle = (i / segments) * Math.PI * 2;
+                ring.push([
+                    cx + Math.cos(angle) * R,
+                    cy + Math.sin(angle) * R
+                ]);
+            }
+
+            return [ring];
+        }
+
+        /**
+         * draw cylinder
+         * vẽ hình trụ
+         * center: điểm trung tâm
+         * radius: bán kính
+         * height: chiều cao
+         * color: màu sắc
+        */
+        function drawCylinder(center, radius, height, color) {
+            const polygon = new Polygon({
+                rings: createCircleRings(center[0], center[1], radius),
+                spatialReference: { wkid: 4326 }
+            });
+
+            const graphic = new Graphic({
+                geometry: polygon,
+                symbol: new PolygonSymbol3D({
+                symbolLayers: [
+                    new ExtrudeSymbol3DLayer({
+                        size: height,
+                        material: { color }
+                    })
+                ]
+                })
+            });
+
+            cylinderGraphics.push(graphic);
+        }
+
+        /**
+         * draw stair
+         * vẽ bậc thang
+         * startPoint1: điểm bắt đầu
+         * endPoint2: điểm kết thúc
+         * colWidth: chiều rộng của cột
+         * floorHeight: chiều cao của sàn nhà
+         */
+        function drawStair(startPoint1, endPoint2, directionPoint, colWidth, floorHeight) {
+            let stairLength = distance2D(startPoint1, endPoint2);
+            let stairWidth = stairLength/4;
+            let stairStepNum = 5;
+            let stairHeight = floorHeight/(stairStepNum+1);
+            let stairStepWidth = stairWidth/stairStepNum;
+            let startPoint2 = pointAtDistance(startPoint1, endPoint2, colWidth, 0);
+            let endPoint1 = pointAtDistance(endPoint2, startPoint1, colWidth, 0);
+
+            let startPointDirectionOposite = findC(startPoint1, startPoint2, directionPoint, stairWidth);
+            let startPoint3 = pointAtDistance(startPointDirectionOposite, startPoint2, 2*stairWidth, 0);
+            let startPoint4 = findC(startPointDirectionOposite, startPoint3, startPoint1, colWidth);
+            drawBox([startPoint1, startPoint2, startPoint3, startPoint4, startPoint1], floorHeight, "#d9c5a0");
+
+            let endPointDirectionOposite = findC(endPoint1, endPoint2, directionPoint, stairWidth);
+            let endPoint3 = pointAtDistance(endPointDirectionOposite, endPoint2, 2*stairWidth, 0);
+            let endPoint4 = findC(endPointDirectionOposite, endPoint3, endPoint1, colWidth);
+            drawBox([endPoint1, endPoint2, endPoint3, endPoint4, endPoint1], floorHeight, "#d9c5a0");
+            let stairStepPoint1 = startPoint2;
+            let stairStepPoint2 = endPoint1;
+            for (let i = 0; i < stairStepNum; i++) {
+                let stairStepPoint1 = [startPoint2[0], startPoint2[1], startPoint2[2] + stairHeight*i];
+                let stairStepPoint2 = [endPoint1[0], endPoint1[1], endPoint1[2] + stairHeight*i];
+                let stairStepPoint3 = pointAtDistance(endPoint1, endPoint4, stairWidth - i*stairStepWidth, 0);
+                let stairStepPoint4 =  pointAtDistance(startPoint2, startPoint3, stairWidth - i*stairStepWidth, 0);
+                stairStepPoint3[2] += stairHeight*i;
+                stairStepPoint4[2] += stairHeight*i;
+                
+                drawBox([stairStepPoint1, stairStepPoint2, stairStepPoint3, stairStepPoint4, stairStepPoint1], stairHeight, "#f2e6d9");
+            } 
+            
+        }
+
+        /**
+         * draw railing frame
+         * vẽ lan khung lan can
+         * startPoint: điểm bắt đầu
+         * endPoint: điểm kết thúc
+         * height: chiều cao của lan can
+         */
+        function drawRailingFrame(startPoint, endPoint, height) {
+
+            const color = "#444";
+            const horizontalNum = 4;
+            const r = height/(horizontalNum + 1);
+            let railingLength = distance2D(startPoint, endPoint);
+            let width = 0.07;
+            
+            // vẽ thanh ngang của lan can
+            for (let i = 1; i <= horizontalNum; i++) {
+                const z = startPoint[2];
+                if (i == horizontalNum) {
+                    width = 0.11;
+                }  
+                drawLine(
+                    [[startPoint[0], startPoint[1], z + i*r], [endPoint[0], endPoint[1], z + i*r]],
+                    width, width,
+                    color
+                );
+            }
+
+        }
+
+        function drawFoundation(floor1Point1, floor1Point2, floor1Point3, floor1Point4, width, heigh) {
+            // 0.000009343062794361062
+            let floor1Point1_floor1Point2 = distance2D(floor1Point1, floor1Point2);
+            let foundationPointTemp21 = pointAtDistance(floor1Point2, floor1Point1, floor1Point1_floor1Point2 + width, 0);
+            foundationPointTemp21[2] = 0;
+            let foundationPointTemp12 = pointAtDistance(floor1Point1, floor1Point2, floor1Point1_floor1Point2 + width, 0);
+            foundationPointTemp12[2] = 0;
+
+            let floor1Point2_floor1Point3 = distance2D(floor1Point2, floor1Point3);
+            let foundationPointTemp32 = pointAtDistance(floor1Point3, floor1Point2, floor1Point2_floor1Point3 + width, 0);
+            foundationPointTemp32[2] = 0;
+            let foundationPointTemp23 = pointAtDistance(floor1Point2, floor1Point3, floor1Point2_floor1Point3 + width, 0);
+            foundationPointTemp23[2] = 0;
+
+            let floor1Point3_floor1Point4 = distance2D(floor1Point3, floor1Point4);
+            let foundationPointTemp43 = pointAtDistance(floor1Point4, floor1Point3, floor1Point3_floor1Point4 + width, 0);
+            foundationPointTemp43[2] = 0;
+            let foundationPointTemp34 = pointAtDistance(floor1Point3, floor1Point4, floor1Point3_floor1Point4 + width, 0);
+            foundationPointTemp34[2] = 0;
+
+            let floor1Point4_floor1Point1 = distance2D(floor1Point4, floor1Point1);
+            let foundationPointTemp14 = pointAtDistance(floor1Point1, floor1Point4, floor1Point4_floor1Point1 + width, 0);
+            foundationPointTemp14[2] = 0;
+            let foundationPointTemp41 = pointAtDistance(floor1Point4, floor1Point1, floor1Point4_floor1Point1 + width, 0);
+            foundationPointTemp41[2] = 0;
+
+            let foundationPoint1 = pointAtDistance(foundationPointTemp32, foundationPointTemp41, floor1Point1_floor1Point2 + width, 0);
+            let foundationPoint2 = pointAtDistance(foundationPointTemp41, foundationPointTemp32, floor1Point1_floor1Point2 + width, 0);
+            let foundationPoint3 = pointAtDistance(foundationPointTemp14, foundationPointTemp23, floor1Point3_floor1Point4 + width, 0);
+            let foundationPoint4 = pointAtDistance(foundationPointTemp23, foundationPointTemp14, floor1Point3_floor1Point4 + width, 0);
+
+            drawBox([foundationPoint1, foundationPoint2, foundationPoint3, foundationPoint4, foundationPoint1], heigh, "#ffffff", false);
+        }
+
+        const floor1Height = 1.5;
+        const floor1Z = 3;
+        const colHeight1 = 5;
+        const wallHeight1 = colHeight1;
+        const floor1FirstPointX = 106.7069257;
+        const floor1FirtPointY = 10.768433;
+        const floor1FirstPoint = [floor1FirstPointX, floor1FirtPointY, floor1Z]// kinh độ, vĩ độ, độ cao
+
+        const floor1SecondPointX = 106.70703;
+        const floor1SecondPointY = 10.768215;
+        const floor1SecondPoint = [floor1SecondPointX, floor1SecondPointY, floor1Z];
+
+        const floor1ThirdPointX = 106.7067549;
+        const floor1ThirdPointY = 10.76808798;
+        const floor1ThirdPoint = [floor1ThirdPointX, floor1ThirdPointY, floor1Z];
+
+        const floor1LastPointX = 106.7066515;
+        const floor1LastPointY = 10.768303;
+        const floor1LastPoint = [floor1LastPointX, floor1LastPointY, floor1Z];
+
+        // Tầng 1
+        const floor1 = [
+            floor1FirstPoint,
+            floor1SecondPoint,
+            floor1ThirdPoint,
+            floor1LastPoint,
+            floor1FirstPoint
+        ];
+        drawFoundation(floor1FirstPoint, floor1SecondPoint, floor1ThirdPoint, floor1LastPoint,  0.000009343062794361062, floor1Z);
+        drawFloor(floor1, floor1Height, colHeight1, wallHeight1, false, true, true);
+
+
+        // Tầng 2 (nhỏ hơn)
+        let floor2Height = floor1Height/4;
+        const colHeight2 = 5;
+        const wallHeight2 = colHeight2;
+        let floor2FirstPoint = [floor1FirstPoint[0], floor1FirstPoint[1], floor1FirstPoint[2] + floor1Height + wallHeight1];
+        let floor2SecondPoint = [floor1SecondPoint[0], floor1SecondPoint[1], floor1SecondPoint[2] + floor1Height + wallHeight1];
+        let floor2ThirdPoint = [floor1ThirdPoint[0], floor1ThirdPoint[1], floor1ThirdPoint[2] + floor1Height + wallHeight1];
+        let floor2LastPoint = [floor1LastPoint[0], floor1LastPoint[1], floor1LastPoint[2] + floor1Height + wallHeight1];
+        const floor2 = [
+            floor2FirstPoint,
+            floor2SecondPoint,
+            floor2ThirdPoint,
+            floor2LastPoint,
+            floor2FirstPoint
+        ];
+
+        drawFloor(floor2, floor2Height, colHeight2, wallHeight2, false, false, false);
+
+        let floor3Height = floor2Height;
+        const colHeight3 = 2;
+        const wallHeight3 = 5;
+        let floor3FirstPoint = [floor2FirstPoint[0], floor2FirstPoint[1], floor2FirstPoint[2] + floor2Height + wallHeight2];
+        let floor3SecondPoint = [floor2SecondPoint[0], floor2SecondPoint[1], floor2SecondPoint[2] + floor2Height + wallHeight2];
+        let floor3ThirdPoint = [floor2ThirdPoint[0], floor2ThirdPoint[1], floor2ThirdPoint[2] + floor2Height + wallHeight2];
+        let floor3LastPoint = [floor2LastPoint[0], floor2LastPoint[1], floor2LastPoint[2] + floor2Height + wallHeight2];
+        const floor3 = [
+            floor3FirstPoint,
+            floor3SecondPoint,
+            floor3ThirdPoint,
+            floor3LastPoint,
+            floor3FirstPoint
+        ];
+
+        drawFloor(floor3, floor3Height, colHeight3, wallHeight3, true, false, false);
+
+        //106.70672 10.76851 2.7701553557241687
+        //let statuePoint = [106.70675011653228, 10.768449170514241, 3.18];
+        let statuePoint = [106.70672, 10.76851, 2.7701553557241687];
+        loadNTTStatue(statuePoint);
+        layer.addMany(boxGraphics.concat(polygon3DGraphics).concat(polyLineGraphics).concat(pointGraphics).concat(cylinderGraphics));
+        meshItems.forEach(item => {
+            renderMesh(item.position, item.path, item.scale, item.rotate);
+        });
+    });
+}) ();

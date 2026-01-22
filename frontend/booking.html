@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Đặt Vé - Bảo Tàng Bến Nhà Rồng</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+        }
+
+        /* Navigation */
+        nav {
+            background: white;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 1rem 2rem;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .nav-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 1.3rem;
+            font-weight: bold;
+            color: #c41e3a;
+            text-decoration: none;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 2rem;
+            align-items: center;
+        }
+
+        .nav-links a {
+            text-decoration: none;
+            color: #333;
+            font-weight: 500;
+            transition: color 0.3s;
+        }
+
+        .nav-links a:hover {
+            color: #c41e3a;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .user-avatar {
+            width: 35px;
+            height: 35px;
+            border-radius: 50%;
+            background: #c41e3a;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+        }
+
+        /* Container */
+        .container {
+            max-width: 1200px;
+            margin: 2rem auto;
+            padding: 0 2rem;
+        }
+
+        /* Header */
+        .page-header {
+            background: white;
+            border-radius: 15px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+
+        .page-header h1 {
+            color: #c41e3a;
+            margin-bottom: 0.5rem;
+        }
+
+        .page-header p {
+            color: #666;
+        }
+
+        /* Ticket Grid */
+        .tickets-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .ticket-card {
+            background: white;
+            border-radius: 15px;
+            padding: 2rem;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            transition: all 0.3s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .ticket-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 5px;
+            background: linear-gradient(90deg, #c41e3a, #ff6b6b);
+        }
+
+        .ticket-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+        }
+
+        .ticket-type {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #c41e3a;
+            margin-bottom: 0.5rem;
+        }
+
+        .ticket-description {
+            color: #666;
+            margin-bottom: 1rem;
+            line-height: 1.6;
+        }
+
+        .ticket-price {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 1.5rem;
+        }
+
+        .ticket-price span {
+            font-size: 1rem;
+            color: #999;
+        }
+
+        .quantity-selector {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .quantity-label {
+            font-weight: 500;
+            color: #666;
+        }
+
+        .quantity-controls {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .quantity-btn {
+            width: 35px;
+            height: 35px;
+            border: 2px solid #c41e3a;
+            background: white;
+            color: #c41e3a;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1.2rem;
+            transition: all 0.3s;
+        }
+
+        .quantity-btn:hover {
+            background: #c41e3a;
+            color: white;
+        }
+
+        .quantity-btn:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+
+        .quantity-display {
+            width: 50px;
+            text-align: center;
+            font-size: 1.2rem;
+            font-weight: bold;
+        }
+
+        .add-to-cart-btn {
+            width: 100%;
+            padding: 1rem;
+            background: linear-gradient(135deg, #c41e3a, #ff6b6b);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .add-to-cart-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 15px rgba(196, 30, 58, 0.3);
+        }
+
+        .add-to-cart-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Cart Summary */
+        .cart-summary {
+            position: sticky;
+            top: 100px;
+            background: white;
+            border-radius: 15px;
+            padding: 2rem;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+
+        .cart-summary h2 {
+            color: #c41e3a;
+            margin-bottom: 1.5rem;
+        }
+
+        .cart-items {
+            margin-bottom: 1.5rem;
+        }
+
+        .cart-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem;
+            background: #f8f9fa;
+            border-radius: 10px;
+            margin-bottom: 0.5rem;
+        }
+
+        .cart-item-info h4 {
+            color: #333;
+            margin-bottom: 0.25rem;
+        }
+
+        .cart-item-info p {
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        .cart-item-remove {
+            background: #ff4444;
+            color: white;
+            border: none;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 1.2rem;
+        }
+
+        .cart-total {
+            border-top: 2px solid #eee;
+            padding-top: 1rem;
+            margin-top: 1rem;
+        }
+
+        .cart-total-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 0.5rem;
+            font-size: 1.1rem;
+        }
+
+        .cart-total-row.final {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #c41e3a;
+        }
+
+        .checkout-btn {
+            width: 100%;
+            padding: 1.2rem;
+            background: linear-gradient(135deg, #c41e3a, #ff6b6b);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 1rem;
+            transition: all 0.3s;
+        }
+
+        .checkout-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 15px rgba(196, 30, 58, 0.3);
+        }
+
+        .checkout-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .empty-cart {
+            text-align: center;
+            padding: 2rem;
+            color: #999;
+        }
+
+        /* Loading */
+        .loading {
+            text-align: center;
+            padding: 3rem;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #c41e3a;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .tickets-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .cart-summary {
+                position: static;
+            }
+        }
+
+        /* Alert */
+        .alert {
+            padding: 1rem;
+            border-radius: 10px;
+            margin-bottom: 1rem;
+        }
+
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .alert-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .alert-info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav>
+        <div class="nav-container">
+            <a href="/" class="logo">Bảo Tàng Bến Nhà Rồng</a>
+            <div class="nav-links">
+                <a href="/">Trang Chủ</a>
+                <a href="/my-orders.html">Đơn Hàng</a>
+                <a href="/tickets.html">Vé Của Tôi</a>
+                <div class="user-info" id="userInfo">
+                    <div class="user-avatar" id="userAvatar">U</div>
+                    <span id="userName">Khách</span>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Container -->
+    <div class="container">
+        <!-- Header -->
+        <div class="page-header">
+            <h1>Đặt Vé Tham Quan</h1>
+            <p>Chọn loại vé và số lượng bạn muốn đặt</p>
+        </div>
+
+        <!-- Alert -->
+        <div id="alertContainer"></div>
+
+        <!-- Loading -->
+        <div id="loadingIndicator" class="loading" style="display: none;">
+            <div class="spinner"></div>
+            <p>Đang tải...</p>
+        </div>
+
+        <!-- Main Content -->
+        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 2rem;">
+            <!-- Tickets Grid -->
+            <div>
+                <div class="tickets-grid" id="ticketsGrid">
+                    <!-- Tickets will be loaded here -->
+                </div>
+            </div>
+
+            <!-- Cart Summary -->
+            <div>
+                <div class="cart-summary">
+                    <h2>Giỏ Hàng</h2>
+                    <div id="cartItems" class="cart-items">
+                        <div class="empty-cart">
+                            Chưa có vé nào trong giỏ
+                        </div>
+                    </div>
+                    <div id="cartTotal" class="cart-total" style="display: none;">
+                        <div class="cart-total-row">
+                            <span>Tổng số vé:</span>
+                            <span id="totalQuantity">0</span>
+                        </div>
+                        <div class="cart-total-row final">
+                            <span>Tổng tiền:</span>
+                            <span id="totalPrice">0 VND</span>
+                        </div>
+                    </div>
+                    <button id="checkoutBtn" class="checkout-btn" disabled>
+                        Thanh Toán
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = '/api';
+        let ticketTypes = [];
+        let cart = [];
+
+        // Load ticket types
+        async function loadTicketTypes() {
+            try {
+                document.getElementById('loadingIndicator').style.display = 'block';
+                
+                const response = await fetch(`${API_URL}/booking/ticket-types`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    ticketTypes = data.data;
+                    renderTickets();
+                } else {
+                    showAlert('error', 'Không thể tải danh sách vé');
+                }
+            } catch (error) {
+                console.error('Load ticket types error:', error);
+                showAlert('error', 'Lỗi kết nối. Vui lòng thử lại!');
+            } finally {
+                document.getElementById('loadingIndicator').style.display = 'none';
+            }
+        }
+
+        // Render tickets
+        function renderTickets() {
+            const grid = document.getElementById('ticketsGrid');
+            grid.innerHTML = ticketTypes.map(ticket => `
+                <div class="ticket-card">
+                    <div class="ticket-type">${ticket.name}</div>
+                    <div class="ticket-description">${ticket.description || ''}</div>
+                    <div class="ticket-price">
+                        ${formatPrice(ticket.price)} <span>VND</span>
+                    </div>
+                    <div class="quantity-selector">
+                        <span class="quantity-label">Số lượng:</span>
+                        <div class="quantity-controls">
+                            <button class="quantity-btn" onclick="changeQuantity(${ticket.id}, -1)">−</button>
+                            <div class="quantity-display" id="qty-${ticket.id}">0</div>
+                            <button class="quantity-btn" onclick="changeQuantity(${ticket.id}, 1)">+</button>
+                        </div>
+                    </div>
+                    <button class="add-to-cart-btn" onclick="addToCart(${ticket.id})" id="btn-${ticket.id}">
+                        Thêm Vào Giỏ
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        // Change quantity
+        function changeQuantity(ticketTypeId, delta) {
+            const display = document.getElementById(`qty-${ticketTypeId}`);
+            let current = parseInt(display.textContent);
+            let newQty = Math.max(0, current + delta);
+            display.textContent = newQty;
+            
+            // Update button
+            const btn = document.getElementById(`btn-${ticketTypeId}`);
+            btn.disabled = newQty === 0;
+        }
+
+        // Add to cart
+        function addToCart(ticketTypeId) {
+            const qtyDisplay = document.getElementById(`qty-${ticketTypeId}`);
+            const quantity = parseInt(qtyDisplay.textContent);
+            
+            if (quantity === 0) return;
+            
+            const ticket = ticketTypes.find(t => t.id === ticketTypeId);
+            
+            // Check if already in cart
+            const existingIndex = cart.findIndex(item => item.id === ticketTypeId);
+            
+            if (existingIndex >= 0) {
+                cart[existingIndex].quantity += quantity;
+            } else {
+                cart.push({
+                    id: ticket.id,
+                    type_name: ticket.name,
+                    price: ticket.price,
+                    quantity: quantity
+                });
+            }
+            
+            // Reset quantity
+            qtyDisplay.textContent = '0';
+            document.getElementById(`btn-${ticketTypeId}`).disabled = true;
+            
+            renderCart();
+            showAlert('success', `Đã thêm ${quantity} vé ${ticket.name} vào giỏ!`);
+        }
+
+        // Remove from cart
+        function removeFromCart(ticketTypeId) {
+            cart = cart.filter(item => item.id !== ticketTypeId);
+            renderCart();
+            showAlert('info', 'Đã xóa vé khỏi giỏ');
+        }
+
+        // Render cart
+        function renderCart() {
+            const cartItemsDiv = document.getElementById('cartItems');
+            const cartTotalDiv = document.getElementById('cartTotal');
+            const checkoutBtn = document.getElementById('checkoutBtn');
+            
+            if (cart.length === 0) {
+                cartItemsDiv.innerHTML = '<div class="empty-cart">Chưa có vé nào trong giỏ</div>';
+                cartTotalDiv.style.display = 'none';
+                checkoutBtn.disabled = true;
+                return;
+            }
+            
+            let totalQuantity = 0;
+            let totalPrice = 0;
+            
+            cartItemsDiv.innerHTML = cart.map(item => {
+                const subtotal = item.price * item.quantity;
+                totalQuantity += item.quantity;
+                totalPrice += subtotal;
+                
+                return `
+                    <div class="cart-item">
+                        <div class="cart-item-info">
+                            <h4>${item.type_name}</h4>
+                            <p>${item.quantity} × ${formatPrice(item.price)} VND</p>
+                        </div>
+                        <button class="cart-item-remove" onclick="removeFromCart(${item.id})">×</button>
+                    </div>
+                `;
+            }).join('');
+            
+            document.getElementById('totalQuantity').textContent = totalQuantity;
+            document.getElementById('totalPrice').textContent = formatPrice(totalPrice) + ' VND';
+            
+            cartTotalDiv.style.display = 'block';
+            checkoutBtn.disabled = false;
+        }
+
+        // Checkout
+        document.getElementById('checkoutBtn').addEventListener('click', async () => {
+            if (cart.length === 0) return;
+            
+            // Check login
+            const sessionResponse = await fetch(`${API_URL}/auth/session`);
+            const sessionData = await sessionResponse.json();
+            
+            if (!sessionData.logged_in) {
+                showAlert('error', 'Vui lòng đăng nhập để đặt vé!');
+                setTimeout(() => {
+                    window.location.href = '/login.html?redirect=/booking.html';
+                }, 1500);
+                return;
+            }
+            
+            // Save cart to sessionStorage and redirect
+            sessionStorage.setItem('bookingCart', JSON.stringify(cart));
+            window.location.href = '/checkout.html';
+        });
+
+        // Format price
+        function formatPrice(price) {
+            return new Intl.NumberFormat('vi-VN').format(price);
+        }
+
+        // Show alert
+        function showAlert(type, message) {
+            const container = document.getElementById('alertContainer');
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert alert-${type}`;
+            alertDiv.textContent = message;
+            container.appendChild(alertDiv);
+            
+            setTimeout(() => {
+                alertDiv.remove();
+            }, 3000);
+        }
+
+        // Load user info
+        async function loadUserInfo() {
+            try {
+                const response = await fetch(`${API_URL}/auth/session`);
+                const data = await response.json();
+                
+                if (data.logged_in && data.data) {
+                    document.getElementById('userName').textContent = data.data.fullname;
+                    const avatar = document.getElementById('userAvatar');
+                    avatar.textContent = data.data.fullname.charAt(0).toUpperCase();
+                }
+            } catch (error) {
+                console.error('Load user info error:', error);
+            }
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            loadUserInfo();
+            loadTicketTypes();
+        });
+    </script>
+</body>
+</html>

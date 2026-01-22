@@ -1,0 +1,441 @@
+"""
+Authentication and Authorization Module
+Museum Management System
+"""
+
+import hashlib
+import secrets
+import re
+from datetime import datetime, timedelta
+from functools import wraps
+from flask import session, jsonify, request
+from werkzeug.security import generate_password_hash, check_password_hash
+
+class AuthManager:
+    """Handle authentication and authorization"""
+    
+    # Permission mappings for each role
+    ROLE_PERMISSIONS = {
+        'Admin': ['all'],  # Admin has all permissions
+        'Manager': [
+            'dashboard', 'map', 'diagram', 'tour',
+            'customers', 'tickets', 'checkin', 'checkout', 
+            'rating', 'export', 'change_own_password'
+        ],
+        'Staff': [
+            'customers', 'tickets', 'change_own_password'
+        ],
+        'Tour Guide': [
+            'checkin', 'checkout', 'rating', 'change_own_password'
+        ],
+        'Security': [
+            'checkin', 'checkout', 'rating', 'change_own_password'
+        ],
+        'Customer': [
+            'map', 'diagram', 'tour', 'my_tickets', 
+            'purchase', 'change_own_password'
+        ]
+    }
+    
+    @staticmethod
+    def hash_password(password):
+        """Hash password using werkzeug (scrypt) - compatible with app.py login"""
+        return generate_password_hash(password)
+    
+    @staticmethod
+    def verify_password(password, hashed_password):
+        """Verify password against hash using werkzeug"""
+        return check_password_hash(hashed_password, password)
+    
+    @staticmethod
+    def generate_reset_token():
+        """Generate secure random token for password reset"""
+        return secrets.token_urlsafe(32)
+    
+    @staticmethod
+    def validate_email(email):
+        """Validate email format"""
+        pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        return re.match(pattern, email) is not None
+    
+    @staticmethod
+    def validate_password(password):
+        """Validate password requirements"""
+        if len(password) < 8:
+            return False, "Mật khẩu phải có ít nhất 8 ký tự"
+        return True, ""
+    
+    @staticmethod
+    def validate_phone(phone):
+        """Validate Vietnamese phone number"""
+        pattern = r'^(0|\+84)[0-9]{9,10}$'
+        return re.match(pattern, phone) is not None
+    
+    @staticmethod
+    def get_user_role(db, user_id):
+        """Get user's role name"""
+        cursor = db.cursor()
+        cursor.execute("""
+            SELECT r.ROLE_NAME, r.PERMISSIONS
+            FROM USER_ROLE ur
+            JOIN ROLE r ON ur.ROLE_ID = r.ROLE_ID
+            WHERE ur.USER_ID = ?
+            ORDER BY r.ROLE_ID ASC
+            LIMIT 1
+        """, (user_id,))
+        result = cursor.fetchone()
+        return result if result else (None, None)
+    
+    @staticmethod
+    def has_permission(role_name, required_permission):
+        """Check if role has required permission"""
+        if not role_name or role_name not in AuthManager.ROLE_PERMISSIONS:
+            return False
+        
+        permissions = AuthManager.ROLE_PERMISSIONS[role_name]
+        
+        # Admin has all permissions
+        if 'all' in permissions:
+            return True
+        
+        return required_permission in permissions
+    
+    @staticmethod
+    def get_user_permissions(role_name):
+        """Get all permissions for a role"""
+        return AuthManager.ROLE_PERMISSIONS.get(role_name, [])
+    
+    @staticmethod
+    def login_user(db, username, password, user_type='internal'):
+        """Authenticate user and create session"""
+        cursor = db.cursor()
+        
+        # Find user - INCLUDE PHONE in SELECT
+        cursor.execute("""
+            SELECT USER_ID, USERNAME, PASSWORD, FULLNAME, EMAIL, PHONE,
+                   IS_ACTIVE, USER_TYPE
+            FROM USER
+            WHERE (USERNAME = ? OR EMAIL = ?) AND USER_TYPE = ?
+        """, (username, username, user_type))
+        
+        user = cursor.fetchone()
+        
+        if not user:
+            return None, "Tên đăng nhập hoặc mật khẩu không đúng"
+        
+        # Unpack with PHONE
+        user_id, username, hashed_pwd, fullname, email, phone, is_active, user_type = user
+        
+        # Check if account is active
+        if not is_active:
+            return None, "Tài khoản đã bị vô hiệu hóa"
+        
+        # Verify password
+        if not AuthManager.verify_password(password, hashed_pwd):
+            return None, "Tên đăng nhập hoặc mật khẩu không đúng"
+        
+        # Get role
+        role_name, permissions = AuthManager.get_user_role(db, user_id)
+        
+        if not role_name:
+            return None, "Tài khoản chưa được phân quyền"
+        
+        # Update last login
+        cursor.execute("""
+            UPDATE USER 
+            SET LAST_LOGIN = ? 
+            WHERE USER_ID = ?
+        """, (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), user_id))
+        db.commit()
+        
+        # Create session - INCLUDE PHONE
+        session_data = {
+            'user_id': user_id,
+            'username': username,
+            'fullname': fullname,
+            'email': email,
+            'phone': phone,  # ← ADD THIS
+            'role': role_name,
+            'user_type': user_type,
+            'permissions': AuthManager.get_user_permissions(role_name)
+        }
+        
+        return session_data, None
+    
+    @staticmethod
+    def register_customer(db, username, password, fullname, phone, email):
+        """Register new customer account"""
+        cursor = db.cursor()
+        
+        # Validate inputs
+        if not username or not password or not fullname or not phone:
+            return None, "Vui lòng điền đầy đủ thông tin"
+        
+        # Validate email if provided
+        if email and not AuthManager.validate_email(email):
+            return None, "Email không hợp lệ"
+        
+        # Validate password
+        is_valid, message = AuthManager.validate_password(password)
+        if not is_valid:
+            return None, message
+        
+        # Validate phone
+        if not AuthManager.validate_phone(phone):
+            return None, "Số điện thoại không hợp lệ"
+        
+        # Check if username exists
+        cursor.execute("""
+            SELECT USER_ID FROM USER WHERE USERNAME = ?
+        """, (username,))
+        if cursor.fetchone():
+            return None, "Tên đăng nhập đã tồn tại"
+        
+        # Check if email exists
+        if email:
+            cursor.execute("""
+                SELECT USER_ID FROM USER WHERE EMAIL = ?
+            """, (email,))
+            if cursor.fetchone():
+                return None, "Email đã được sử dụng"
+        
+        # Check if phone exists
+        cursor.execute("""
+            SELECT CUSTOMER_ID FROM CUSTOMER WHERE PHONE = ?
+        """, (phone,))
+        if cursor.fetchone():
+            return None, "Số điện thoại đã được đăng ký"
+        
+        try:
+            # Create user account
+            hashed_pwd = AuthManager.hash_password(password)
+            cursor.execute("""
+                INSERT INTO USER (
+                    USERNAME, PASSWORD, EMAIL, FULLNAME, PHONE,
+                    USER_TYPE, IS_ACTIVE, CREATED_AT, UPDATED_AT
+                ) VALUES (?, ?, ?, ?, ?, 'customer', 1, ?, ?)
+            """, (
+                username, hashed_pwd, email, fullname, phone,
+                datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            ))
+            
+            user_id = cursor.lastrowid
+            
+            # Create customer record
+            cursor.execute("""
+                INSERT INTO CUSTOMER (
+                    FULLNAME, PHONE, EMAIL, USER_ID,
+                    CREATED_AT, UPDATED_AT
+                ) VALUES (?, ?, ?, ?, ?, ?)
+            """, (
+                fullname, phone, email, user_id,
+                datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            ))
+            
+            # Assign Customer role (ROLE_ID = 6)
+            cursor.execute("""
+                INSERT INTO USER_ROLE (USER_ID, ROLE_ID, ASSIGNED_AT)
+                VALUES (?, 6, ?)
+            """, (user_id, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+            
+            db.commit()
+            
+            return user_id, None
+            
+        except Exception as e:
+            db.rollback()
+            return None, f"Lỗi khi tạo tài khoản: {str(e)}"
+    
+    @staticmethod
+    def create_password_reset_token(db, email):
+        """Create password reset token and return token"""
+        cursor = db.cursor()
+        
+        # Find user by email
+        cursor.execute("""
+            SELECT USER_ID, EMAIL FROM USER WHERE EMAIL = ?
+        """, (email,))
+        
+        user = cursor.fetchone()
+        
+        if not user:
+            return None, "Email không tồn tại trong hệ thống"
+        
+        user_id, email = user
+        
+        # Generate token
+        token = AuthManager.generate_reset_token()
+        expires_at = (datetime.now() + timedelta(hours=1)).strftime('%Y-%m-%d %H:%M:%S')
+        
+        try:
+            # Insert reset token
+            cursor.execute("""
+                INSERT INTO PASSWORD_RESET (
+                    USER_ID, RESET_TOKEN, EXPIRES_AT, CREATED_AT
+                ) VALUES (?, ?, ?, ?)
+            """, (
+                user_id, token, expires_at,
+                datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            ))
+            
+            db.commit()
+            
+            return token, None
+            
+        except Exception as e:
+            db.rollback()
+            return None, f"Lỗi khi tạo token: {str(e)}"
+    
+    @staticmethod
+    def reset_password_with_token(db, token, new_password):
+        """Reset password using token"""
+        cursor = db.cursor()
+        
+        # Validate password
+        is_valid, message = AuthManager.validate_password(new_password)
+        if not is_valid:
+            return False, message
+        
+        # Find valid token
+        cursor.execute("""
+            SELECT USER_ID, EXPIRES_AT, USED
+            FROM PASSWORD_RESET
+            WHERE RESET_TOKEN = ?
+        """, (token,))
+        
+        result = cursor.fetchone()
+        
+        if not result:
+            return False, "Token không hợp lệ"
+        
+        user_id, expires_at, used = result
+        
+        # Check if token was used
+        if used:
+            return False, "Token đã được sử dụng"
+        
+        # Check if token expired
+        if datetime.strptime(expires_at, '%Y-%m-%d %H:%M:%S') < datetime.now():
+            return False, "Token đã hết hạn"
+        
+        try:
+            # Update password ONLY - Do NOT touch EMAIL or PHONE
+            hashed_pwd = AuthManager.hash_password(new_password)
+            cursor.execute("""
+                UPDATE USER 
+                SET PASSWORD = ?, UPDATED_AT = ?
+                WHERE USER_ID = ?
+            """, (
+                hashed_pwd,
+                datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                user_id
+            ))
+            
+            # Mark token as used
+            cursor.execute("""
+                UPDATE PASSWORD_RESET 
+                SET USED = 1 
+                WHERE RESET_TOKEN = ?
+            """, (token,))
+            
+            db.commit()
+            
+            return True, None
+            
+        except Exception as e:
+            db.rollback()
+            return False, f"Lỗi khi đổi mật khẩu: {str(e)}"
+    
+    @staticmethod
+    def change_password(db, user_id, old_password, new_password):
+        """Change user's own password"""
+        cursor = db.cursor()
+        
+        # Validate new password
+        is_valid, message = AuthManager.validate_password(new_password)
+        if not is_valid:
+            return False, message
+        
+        # Get current password
+        cursor.execute("""
+            SELECT PASSWORD FROM USER WHERE USER_ID = ?
+        """, (user_id,))
+        
+        result = cursor.fetchone()
+        
+        if not result:
+            return False, "Người dùng không tồn tại"
+        
+        current_hashed = result[0]
+        
+        # Verify old password
+        if not AuthManager.verify_password(old_password, current_hashed):
+            return False, "Mật khẩu cũ không đúng"
+        
+        try:
+            # Update password ONLY
+            new_hashed = AuthManager.hash_password(new_password)
+            cursor.execute("""
+                UPDATE USER 
+                SET PASSWORD = ?, UPDATED_AT = ?
+                WHERE USER_ID = ?
+            """, (
+                new_hashed,
+                datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                user_id
+            ))
+            
+            db.commit()
+            
+            return True, None
+            
+        except Exception as e:
+            db.rollback()
+            return False, f"Lỗi khi đổi mật khẩu: {str(e)}"
+
+
+# Decorators for route protection
+def login_required(f):
+    """Require user to be logged in"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            return jsonify({'error': 'Unauthorized', 'message': 'Vui lòng đăng nhập'}), 401
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+def permission_required(permission):
+    """Require specific permission"""
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if 'user_id' not in session:
+                return jsonify({'error': 'Unauthorized'}), 401
+            
+            role = session.get('role')
+            if not AuthManager.has_permission(role, permission):
+                return jsonify({'error': 'Forbidden', 'message': 'Bạn không có quyền truy cập'}), 403
+            
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
+
+
+def role_required(allowed_roles):
+    """Require user to have one of the allowed roles"""
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if 'user_id' not in session:
+                return jsonify({'error': 'Unauthorized'}), 401
+            
+            role = session.get('role')
+            if role not in allowed_roles:
+                return jsonify({'error': 'Forbidden', 'message': 'Bạn không có quyền truy cập'}), 403
+            
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator

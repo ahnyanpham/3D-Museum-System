@@ -1,0 +1,489 @@
+// ==========================================
+// CHECKOUT.JS - FIXED VERSION WITH API_URL
+// ==========================================
+
+// Define API_URL if not already defined
+const API_URL = window.API_URL || '/api';
+
+const CheckoutManager = {
+    customers: [],
+    groupedVisits: {},
+    itemsPerPage: 10,
+    searchTerm: '',
+    currentPage: 1,
+    currentRating: 0,
+    currentTicketCode: null,
+
+    async init() {
+        console.log('Checkout Manager initialized');
+        this.setupEventListeners();
+        await this.loadActiveCheckouts();
+    },
+
+    setupEventListeners() {
+        // Reload button
+        const refreshBtn = document.getElementById('refresh-active-visits');
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', () => {
+                console.log('Reloading active checkouts...');
+                this.loadActiveCheckouts();
+            });
+        }
+
+        // Search input
+        const searchInput = document.getElementById('search-checkout-customers');
+        if (searchInput) {
+            searchInput.addEventListener('input', (e) => {
+                this.searchTerm = e.target.value.trim().toLowerCase();
+                console.log('Search term:', this.searchTerm);
+                this.renderCustomerList();
+            });
+        }
+    },
+
+    async loadActiveCheckouts() {
+        showLoading();
+        try {
+            // ✅ FIXED: Gọi API lấy danh sách đang tham quan (đã check-in, chưa checkout)
+            const response = await fetch(`${API_URL}/checkout/active`, {
+                credentials: 'include'
+            });
+            
+            const data = await response.json();
+            hideLoading();
+
+            if (data.success) {
+                this.customers = data.data || [];
+                console.log('Loaded customers for checkout:', this.customers.length);
+                this.currentPage = 1;
+                this.renderCustomerList();
+            } else {
+                throw new Error(data.message || 'Lỗi tải danh sách');
+            }
+        } catch (error) {
+            hideLoading();
+            console.error('Error loading checkout list:', error);
+            showToast('Lỗi tải dữ liệu: ' + error.message, 'error');
+        }
+    },
+
+    renderCustomerList() {
+        const container = document.getElementById('active-visits-list');
+        if (!container) return;
+
+        // Filter by search term
+        let filteredCustomers = this.customers;
+        if (this.searchTerm) {
+            filteredCustomers = this.customers.filter(c =>
+                c.customer_name.toLowerCase().includes(this.searchTerm) ||
+                (c.customer_phone && c.customer_phone.includes(this.searchTerm)) ||
+                c.ticket_codes.toLowerCase().includes(this.searchTerm)
+            );
+        }
+
+        if (filteredCustomers.length === 0) {
+            container.innerHTML = `
+                <div style="text-align:center;padding:60px;color:#999">
+                    <i class="fas fa-sign-out-alt" style="font-size:64px;opacity:0.3"></i>
+                    <p style="margin-top:20px;font-size:18px">
+                        ${this.searchTerm ? 'Không tìm thấy kết quả' : 'Chưa có khách nào đang tham quan'}
+                    </p>
+                </div>
+            `;
+            return;
+        }
+
+        // Pagination
+        const start = (this.currentPage - 1) * this.itemsPerPage;
+        const end = start + this.itemsPerPage;
+        const pageCustomers = filteredCustomers.slice(start, end);
+
+        // Items per page selector
+        let html = `
+            <div style="margin-bottom:15px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+                <label style="font-weight:500">Hiển thị:</label>
+                <select id="items-per-page-checkout" style="padding:8px;border:1px solid #ddd;border-radius:6px">
+                    <option value="10"${this.itemsPerPage === 10 ? ' selected' : ''}>10</option>
+                    <option value="30"${this.itemsPerPage === 30 ? ' selected' : ''}>30</option>
+                    <option value="50"${this.itemsPerPage === 50 ? ' selected' : ''}>50</option>
+                    <option value="100"${this.itemsPerPage === 100 ? ' selected' : ''}>100</option>
+                </select>
+                <span style="color:#666;margin-left:auto">
+                    Tổng: ${filteredCustomers.length} khách hàng
+                    (${this.customers.reduce((sum, c) => sum + c.visit_count, 0)} lượt tham quan)
+                </span>
+            </div>
+        `;
+
+        // Customer cards
+        html += '<div class="customer-cards-container">';
+
+        pageCustomers.forEach(customer => {
+            const ticketCodes = customer.ticket_codes.split(', ');
+            const checkInTime = customer.check_in_time ? this.formatDateTime(customer.check_in_time) : 'N/A';
+            const duration = customer.check_in_time ? this.calculateDuration(customer.check_in_time) : 'N/A';
+
+            html += `
+                <div class="customer-card" style="background:white;border-radius:12px;padding:20px;margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,0.1)">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;padding-bottom:15px;border-bottom:2px solid #e2e8f0">
+                        <div>
+                            <h4 style="margin:0;color:#2d3748;font-size:18px">${customer.customer_name}</h4>
+                            <p style="margin:5px 0;color:#718096;font-size:14px">
+                                <i class="fas fa-phone"></i> ${customer.customer_phone || 'N/A'}
+                            </p>
+                        </div>
+                        <span style="background:#48bb78;color:white;padding:8px 16px;border-radius:12px;font-weight:600;font-size:14px">
+                            ${customer.visit_count} lượt (${customer.total_quantity} người)
+                        </span>
+                    </div>
+                    
+                    <div style="margin:15px 0;padding:12px;background:#f7fafc;border-radius:8px">
+                        <p style="margin:5px 0;color:#4a5568"><strong>Giờ vào:</strong> ${checkInTime}</p>
+                        <p style="margin:5px 0;color:#4a5568"><strong>Thời gian:</strong> <span style="color:#e53e3e;font-weight:600">${duration}</span></p>
+                    </div>
+                    
+                    <div style="display:grid;gap:10px;margin-top:15px">
+            `;
+
+            ticketCodes.forEach(code => {
+                html += `
+                    <div style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:#f7fafc;border-radius:8px;border-left:4px solid #48bb78">
+                        <span style="font-weight:600;font-family:monospace;color:#2d3748;font-size:15px">${code}</span>
+                        <button onclick="CheckoutManager.showCheckoutModal('${code}', '${customer.customer_name.replace(/'/g, "\\'")}')" 
+                                class="btn btn-success btn-sm"
+                                style="padding:8px 16px;font-size:14px">
+                            <i class="fas fa-sign-out-alt"></i> Check-out
+                        </button>
+                    </div>
+                `;
+            });
+
+            html += `
+                    </div>
+                </div>
+            `;
+        });
+
+        html += '</div>';
+        html += '<div id="checkout-pagination" style="margin-top:20px"></div>';
+
+        container.innerHTML = html;
+
+        // Items per page change event
+        const selectElement = document.getElementById('items-per-page-checkout');
+        if (selectElement) {
+            selectElement.addEventListener('change', (e) => {
+                this.itemsPerPage = parseInt(e.target.value);
+                this.currentPage = 1;
+                this.renderCustomerList();
+            });
+        }
+
+        this.renderPagination(filteredCustomers.length);
+    },
+
+    renderPagination(totalItems) {
+        const container = document.getElementById('checkout-pagination');
+        if (!container) return;
+
+        const totalPages = Math.ceil(totalItems / this.itemsPerPage);
+
+        if (totalPages <= 1) {
+            container.innerHTML = '';
+            return;
+        }
+
+        let html = '<div style="display:flex;gap:5px;justify-content:center;flex-wrap:wrap">';
+
+        if (this.currentPage > 1) {
+            html += `<button onclick="CheckoutManager.goToPage(${this.currentPage - 1})" class="btn btn-sm">Trước</button>`;
+        }
+
+        for (let i = 1; i <= totalPages; i++) {
+            if (i === 1 || i === totalPages || (i >= this.currentPage - 2 && i <= this.currentPage + 2)) {
+                const activeClass = i === this.currentPage ? 'btn-primary' : 'btn-secondary';
+                html += `<button onclick="CheckoutManager.goToPage(${i})" class="btn btn-sm ${activeClass}">${i}</button>`;
+            } else if (i === this.currentPage - 3 || i === this.currentPage + 3) {
+                html += '<span style="padding:0 5px">...</span>';
+            }
+        }
+
+        if (this.currentPage < totalPages) {
+            html += `<button onclick="CheckoutManager.goToPage(${this.currentPage + 1})" class="btn btn-sm">Sau</button>`;
+        }
+
+        html += '</div>';
+        container.innerHTML = html;
+    },
+
+    goToPage(page) {
+        this.currentPage = page;
+        this.renderCustomerList();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    },
+
+    calculateDuration(checkInTime) {
+        const now = new Date();
+        const checkIn = new Date(checkInTime);
+        const diffMs = now - checkIn;
+        const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+        const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+        
+        if (diffHours > 0) {
+            return `${diffHours} giờ ${diffMins} phút`;
+        }
+        return `${diffMins} phút`;
+    },
+
+    showCheckoutModal(ticketCode, customerName) {
+        const modal = document.getElementById('checkout-modal');
+        const modalBody = document.getElementById('checkout-modal-body');
+        
+        if (!modal || !modalBody) {
+            console.error('Checkout modal not found!');
+            return;
+        }
+
+        // ✅ Rating modal with star rating and suggestions
+        modalBody.innerHTML = `
+            <div style="text-align:center;padding:20px">
+                <h3 style="color:#2d3748;margin-bottom:10px">Check-out</h3>
+                <p style="color:#718096;margin-bottom:20px">
+                    <strong>Mã vé:</strong> ${ticketCode}<br>
+                    <strong>Khách hàng:</strong> ${customerName}
+                </p>
+                
+                <div style="margin:30px 0;padding:20px;background:#f7fafc;border-radius:12px">
+                    <h4 style="margin-bottom:15px;color:#2d3748">Đánh giá trải nghiệm</h4>
+                    
+                    <!-- Star Rating -->
+                    <div class="star-rating" style="margin:20px 0">
+                        <i class="far fa-star star" data-rating="1" onclick="CheckoutManager.setRating(1)"></i>
+                        <i class="far fa-star star" data-rating="2" onclick="CheckoutManager.setRating(2)"></i>
+                        <i class="far fa-star star" data-rating="3" onclick="CheckoutManager.setRating(3)"></i>
+                        <i class="far fa-star star" data-rating="4" onclick="CheckoutManager.setRating(4)"></i>
+                        <i class="far fa-star star" data-rating="5" onclick="CheckoutManager.setRating(5)"></i>
+                    </div>
+                    
+                    <p id="rating-text" style="color:#667eea;font-weight:600;min-height:24px;margin:10px 0">
+                        Nhấn vào sao để đánh giá
+                    </p>
+                    
+                    <!-- Rating Suggestions (hidden initially) -->
+                    <div id="rating-suggestions" style="display:none;margin-top:20px;text-align:left">
+                        <h5 style="margin-bottom:10px;color:#2d3748">Gợi ý đánh giá:</h5>
+                        <div id="suggestion-buttons" style="display:flex;flex-direction:column;gap:8px">
+                            <!-- Suggestions will be inserted here -->
+                        </div>
+                    </div>
+                    
+                    <!-- Custom feedback -->
+                    <textarea id="checkout-feedback" 
+                              placeholder="Nhận xét của bạn (tùy chọn)..."
+                              style="width:100%;min-height:80px;padding:12px;border:1px solid #e2e8f0;border-radius:8px;margin-top:15px;resize:vertical"></textarea>
+                </div>
+                
+                <div style="display:flex;gap:10px;justify-content:center">
+                    <button onclick="CheckoutManager.confirmCheckout('${ticketCode}')" 
+                            class="btn btn-success" id="confirm-checkout-btn">
+                        <i class="fas fa-check"></i> Xác nhận Check-out
+                    </button>
+                    <button onclick="CheckoutManager.closeCheckoutModal()" 
+                            class="btn btn-secondary">
+                        <i class="fas fa-times"></i> Hủy
+                    </button>
+                </div>
+            </div>
+        `;
+
+        modal.classList.add('active');
+        this.currentRating = 0;
+        this.currentTicketCode = ticketCode;
+    },
+
+    setRating(rating) {
+        this.currentRating = rating;
+        
+        // Update stars visual
+        const stars = document.querySelectorAll('.star');
+        stars.forEach((star, index) => {
+            if (index < rating) {
+                star.style.color = '#fbbf24'; // Yellow
+                star.classList.add('fas'); // Solid
+                star.classList.remove('far'); // Remove outline
+            } else {
+                star.style.color = '#d1d5db'; // Gray
+                star.classList.add('far'); // Outline
+                star.classList.remove('fas'); // Remove solid
+            }
+        });
+        
+        // Update rating text and show suggestions
+        const ratingText = document.getElementById('rating-text');
+        const suggestionsDiv = document.getElementById('rating-suggestions');
+        const suggestionButtons = document.getElementById('suggestion-buttons');
+        
+        const ratingMessages = {
+            1: 'Rất không hài lòng 😞',
+            2: 'Không hài lòng 😕',
+            3: 'Bình thường 😐',
+            4: 'Hài lòng 😊',
+            5: 'Rất hài lòng 🤩'
+        };
+        
+        const ratingSuggestions = {
+            1: [
+                'Không gian chưa sạch sẽ',
+                'Nhân viên thiếu nhiệt tình',
+                'Triển lãm chưa hấp dẫn',
+                'Giá vé không xứng đáng'
+            ],
+            2: [
+                'Cần cải thiện vệ sinh',
+                'Dịch vụ chưa tốt',
+                'Hiện vật ít',
+                'Thiếu hướng dẫn viên'
+            ],
+            3: [
+                'Giá cả hợp lý',
+                'Vị trí thuận tiện',
+                'Nội dung đạt yêu cầu',
+                'Phù hợp tham quan'
+            ],
+            4: [
+                'Không gian đẹp',
+                'Nhân viên thân thiện',
+                'Nội dung phong phú',
+                'Đáng để tham quan'
+            ],
+            5: [
+                'Trải nghiệm tuyệt vời',
+                'Nhân viên xuất sắc',
+                'Triển lãm rất hay',
+                'Sẽ giới thiệu cho bạn bè'
+            ]
+        };
+        
+        ratingText.textContent = `${rating} ⭐ - ${ratingMessages[rating]}`;
+        
+        // Show suggestions
+        if (suggestionsDiv && suggestionButtons) {
+            suggestionsDiv.style.display = 'block';
+            suggestionButtons.innerHTML = ratingSuggestions[rating].map(suggestion => `
+                <button class="suggestion-btn" 
+                        onclick="CheckoutManager.addSuggestion('${suggestion.replace(/'/g, "\\'")}')"
+                        style="padding:10px 15px;border:1px solid #e2e8f0;background:white;border-radius:6px;text-align:left;cursor:pointer;transition:all 0.2s">
+                    <i class="fas fa-plus-circle" style="color:#667eea;margin-right:8px"></i>
+                    ${suggestion}
+                </button>
+            `).join('');
+        }
+    },
+
+    addSuggestion(suggestion) {
+        const textarea = document.getElementById('checkout-feedback');
+        if (textarea) {
+            const currentValue = textarea.value.trim();
+            if (currentValue) {
+                textarea.value = currentValue + '\n• ' + suggestion;
+            } else {
+                textarea.value = '• ' + suggestion;
+            }
+            showToast('Đã thêm gợi ý', 'success');
+        }
+    },
+
+    async confirmCheckout(ticketCode) {
+        if (!this.currentRating) {
+            showToast('Vui lòng đánh giá trước khi check-out', 'warning');
+            return;
+        }
+
+        const feedback = document.getElementById('checkout-feedback').value.trim();
+        const confirmBtn = document.getElementById('confirm-checkout-btn');
+        
+        if (!confirm(`Xác nhận check-out vé ${ticketCode}?`)) {
+            return;
+        }
+
+        confirmBtn.disabled = true;
+        confirmBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang xử lý...';
+
+        try {
+            // ✅ FIXED: Gọi đúng API endpoint
+            const response = await fetch(`${API_URL}/checkout`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                credentials: 'include',
+                body: JSON.stringify({
+                    ticket_code: ticketCode,
+                    rating: this.currentRating,
+                    feedback: feedback
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                showToast('✅ Check-out thành công!', 'success');
+                this.closeCheckoutModal();
+                
+                // Reload list
+                await this.loadActiveCheckouts();
+            } else {
+                throw new Error(data.message || 'Lỗi check-out');
+            }
+        } catch (error) {
+            console.error('Checkout error:', error);
+            showToast('Lỗi check-out: ' + error.message, 'error');
+            confirmBtn.disabled = false;
+            confirmBtn.innerHTML = '<i class="fas fa-check"></i> Xác nhận Check-out';
+        }
+    },
+
+    closeCheckoutModal() {
+        const modal = document.getElementById('checkout-modal');
+        if (modal) {
+            modal.classList.remove('active');
+        }
+        this.currentRating = 0;
+        this.currentTicketCode = null;
+    },
+    
+    // Helper methods
+    formatDateTime(dateTimeStr) {
+        if (!dateTimeStr) return 'N/A';
+        const date = new Date(dateTimeStr);
+        return date.toLocaleString('vi-VN');
+    }
+};
+
+// CSS for star rating (add to page if not exists)
+if (!document.getElementById('checkout-rating-styles')) {
+    const style = document.createElement('style');
+    style.id = 'checkout-rating-styles';
+    style.textContent = `
+        .star {
+            font-size: 36px;
+            color: #d1d5db;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin: 0 5px;
+        }
+        
+        .star:hover {
+            transform: scale(1.2);
+        }
+        
+        .suggestion-btn:hover {
+            background: #f7fafc !important;
+            border-color: #667eea !important;
+            transform: translateX(5px);
+        }
+    `;
+    document.head.appendChild(style);
+}
+
+console.log('Checkout module loaded');

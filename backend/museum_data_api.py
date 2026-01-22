@@ -1,0 +1,302 @@
+"""
+Museum Data API - 4 Tables (Pretty JSON)
+Returns beautifully formatted JSON
+"""
+
+from flask import jsonify
+import sqlite3
+import logging
+import json
+
+logger = logging.getLogger(__name__)
+
+DATABASE_PATH = '/home/www/museum-system/data/museum_bennharong.db'
+
+
+def pretty_json_response(data, status=200):
+    """Return pretty formatted JSON"""
+    from flask import current_app
+    return current_app.response_class(
+        response=json.dumps(data, indent=2, ensure_ascii=False),
+        status=status,
+        mimetype='application/json'
+    )
+
+
+def register_museum_data_api(app):
+    """Register all museum data API endpoints"""
+    
+    # ==================== CONSTRUCTION API ====================
+    @app.route('/api/construction', methods=['GET'])
+    def get_constructions():
+        """Get all construction/building data"""
+        try:
+            conn = sqlite3.connect(DATABASE_PATH)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            cursor.execute("SELECT * FROM CONSTRUCTION ORDER BY CONSTRUCTION_ID")
+            rows = cursor.fetchall()
+            
+            constructions = [dict(row) for row in rows]
+            conn.close()
+            
+            logger.info(f"Construction API - Returned {len(constructions)} items")
+            return pretty_json_response(constructions)
+        
+        except Exception as e:
+            logger.error(f"Construction API error: {str(e)}")
+            return pretty_json_response({'error': str(e)}, 500)
+    
+    
+    @app.route('/api/construction/<int:construction_id>', methods=['GET'])
+    def get_construction_detail(construction_id):
+        """Get single construction by ID"""
+        try:
+            conn = sqlite3.connect(DATABASE_PATH)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            cursor.execute("SELECT * FROM CONSTRUCTION WHERE CONSTRUCTION_ID = ?", (construction_id,))
+            row = cursor.fetchone()
+            conn.close()
+            
+            if not row:
+                return pretty_json_response({'error': 'Not found'}, 404)
+            
+            return pretty_json_response(dict(row))
+        
+        except Exception as e:
+            logger.error(f"Construction detail error: {str(e)}")
+            return pretty_json_response({'error': str(e)}, 500)
+    
+    
+    # ==================== COORDINATES API ====================
+    @app.route('/api/construct-and-trip-data', methods=['GET'])
+    def get_construct_and_trip_data():
+        """
+        Get constructions with coordinates and trip data
+        """
+        try:
+            result = {
+                "construction": [],
+                "trip": []
+            }
+
+            conn = sqlite3.connect(DATABASE_PATH)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+
+            # 1️⃣ Get active constructions
+            cursor.execute("""
+                SELECT *
+                FROM CONSTRUCTION
+                WHERE IS_ACTIVE = 1
+                ORDER BY SORT_ORDER
+            """)
+            constructions = [dict(row) for row in cursor.fetchall()]
+
+            # 2️⃣ Get coordinates for each construction
+            for construction in constructions:
+                cursor.execute("""
+                    SELECT *
+                    FROM COORDINATES
+                    WHERE CONSTRUCTION_ID = ?
+                    ORDER BY SORT_ORDER
+                """, (construction["CONSTRUCTION_ID"],))
+
+                construction["COORDINATES"] = [
+                    dict(row) for row in cursor.fetchall()
+                ]
+
+                result["construction"].append(construction)
+
+            # 3️⃣ Get trip data with coordinates
+            cursor.execute("""
+                SELECT
+                    T.*,
+                    C.LONGITUDE,
+                    C.LATITUDE,
+                    C.ALTITUDE
+                FROM TRIP T
+                JOIN COORDINATES C
+                    ON T.COORDINATE_ID = C.COORDINATE_ID
+                ORDER BY T.SORT_ORDER
+            """)
+
+            result["trip"] = [dict(row) for row in cursor.fetchall()]
+
+            conn.close()
+
+            logger.info(
+                "Construct & Trip API - Returned %d constructions, %d trips",
+                len(result["construction"]),
+                len(result["trip"])
+            )
+
+            return pretty_json_response(result)
+        except Exception as e:
+            logger.error(f"Coordinates API error: {str(e)}")
+            return pretty_json_response({'error': str(e)}, 500)
+    
+    
+    @app.route('/api/coordinates/<int:coordinate_id>', methods=['GET'])
+    def get_coordinate_detail(coordinate_id):
+        """Get single coordinate by ID"""
+        try:
+            conn = sqlite3.connect(DATABASE_PATH)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            cursor.execute("SELECT * FROM COORDINATES WHERE COORDINATE_ID = ?", (coordinate_id,))
+            row = cursor.fetchone()
+            conn.close()
+            
+            if not row:
+                return pretty_json_response({'error': 'Not found'}, 404)
+            
+            return pretty_json_response(dict(row))
+        
+        except Exception as e:
+            logger.error(f"Coordinate detail error: {str(e)}")
+            return pretty_json_response({'error': str(e)}, 500)
+    
+    
+    # ==================== TRIP API ====================
+    @app.route('/api/trip', methods=['GET'])
+    def get_trips():
+        """Get all trip data"""
+        try:
+            conn = sqlite3.connect(DATABASE_PATH)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            cursor.execute("SELECT * FROM TRIP ORDER BY TRIP_ID")
+            rows = cursor.fetchall()
+            
+            trips = [dict(row) for row in rows]
+            conn.close()
+            
+            logger.info(f"Trip API - Returned {len(trips)} items")
+            return pretty_json_response(trips)
+        
+        except Exception as e:
+            logger.error(f"Trip API error: {str(e)}")
+            return pretty_json_response({'error': str(e)}, 500)
+    
+    
+    @app.route('/api/trip/<int:trip_id>', methods=['GET'])
+    def get_trip_detail(trip_id):
+        """Get single trip by ID"""
+        try:
+            conn = sqlite3.connect(DATABASE_PATH)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            cursor.execute("SELECT * FROM TRIP WHERE TRIP_ID = ?", (trip_id,))
+            row = cursor.fetchone()
+            conn.close()
+            
+            if not row:
+                return pretty_json_response({'error': 'Not found'}, 404)
+            
+            return pretty_json_response(dict(row))
+        
+        except Exception as e:
+            logger.error(f"Trip detail error: {str(e)}")
+            return pretty_json_response({'error': str(e)}, 500)
+    
+    
+    # ==================== ORGANIZATION API ====================
+    @app.route('/api/organization', methods=['GET'])
+    def get_organizations():
+        """Get all organization data"""
+        try:
+            conn = sqlite3.connect(DATABASE_PATH)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            cursor.execute("SELECT * FROM ORGANIZATION ORDER BY ORGANIZATION_ID")
+            rows = cursor.fetchall()
+            
+            organizations = [dict(row) for row in rows]
+            conn.close()
+            
+            logger.info(f"Organization API - Returned {len(organizations)} items")
+            return pretty_json_response(organizations)
+        
+        except Exception as e:
+            logger.error(f"Organization API error: {str(e)}")
+            return pretty_json_response({'error': str(e)}, 500)
+    
+    
+    @app.route('/api/organization/<int:org_id>', methods=['GET'])
+    def get_organization_detail(org_id):
+        """Get single organization by ID"""
+        try:
+            conn = sqlite3.connect(DATABASE_PATH)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            cursor.execute("SELECT * FROM ORGANIZATION WHERE ORGANIZATION_ID = ?", (org_id,))
+            row = cursor.fetchone()
+            conn.close()
+            
+            if not row:
+                return pretty_json_response({'error': 'Not found'}, 404)
+            
+            return pretty_json_response(dict(row))
+        
+        except Exception as e:
+            logger.error(f"Organization detail error: {str(e)}")
+            return pretty_json_response({'error': str(e)}, 500)
+    
+    
+    # ==================== COMBINED ENDPOINT ====================
+    @app.route('/api/museum-data', methods=['GET'])
+    def get_all_museum_data():
+        """Get all data from 4 tables in one request"""
+        try:
+            conn = sqlite3.connect(DATABASE_PATH)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            # Fetch all 4 tables
+            cursor.execute("SELECT * FROM CONSTRUCTION ORDER BY CONSTRUCTION_ID")
+            constructions = [dict(row) for row in cursor.fetchall()]
+            
+            cursor.execute("SELECT * FROM COORDINATES ORDER BY COORDINATE_ID")
+            coordinates = [dict(row) for row in cursor.fetchall()]
+            
+            cursor.execute("SELECT * FROM TRIP ORDER BY TRIP_ID")
+            trips = [dict(row) for row in cursor.fetchall()]
+            
+            cursor.execute("SELECT * FROM ORGANIZATION ORDER BY ORGANIZATION_ID")
+            organizations = [dict(row) for row in cursor.fetchall()]
+            
+            conn.close()
+            
+            # Combine all data
+            result = {
+                "construction": constructions,
+                "coordinates": coordinates,
+                "trip": trips,
+                "organization": organizations,
+                "summary": {
+                    "total_constructions": len(constructions),
+                    "total_coordinates": len(coordinates),
+                    "total_trips": len(trips),
+                    "total_organizations": len(organizations)
+                }
+            }
+            
+            logger.info(f"Museum Data - Returned all 4 tables")
+            return pretty_json_response(result)
+        
+        except Exception as e:
+            logger.error(f"Museum Data error: {str(e)}")
+            return pretty_json_response({'error': str(e)}, 500)
+    
+    
+    logger.info("✅ Museum Data API routes registered (4 tables - Pretty JSON)")
+

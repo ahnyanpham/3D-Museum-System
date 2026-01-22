@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quản Lý Người Dùng - Bảo Tàng Hồ Chí Minh</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script>
+    function toggleSidebar() {
+        const sidebar = document.getElementById('sidebar');
+        const overlay = document.getElementById('sidebarOverlay');
+        const hamburger = document.getElementById('hamburgerBtn');
+        
+        if (sidebar && overlay && hamburger) {
+            sidebar.classList.toggle('open');
+            overlay.classList.toggle('active');
+            hamburger.classList.toggle('active');
+        }
+    }
+    </script>
+</head>
+<body>
+    <div class="app-container">
+        <header class="header">
+            <h1>Bảo Tàng Hồ Chí Minh</h1>
+            <p>Hệ Thống Quản Lý Tham Quan</p>
+        </header>
+
+        <button class="hamburger-btn" id="hamburgerBtn" onclick="toggleSidebar()">
+            <span></span>
+            <span></span>
+            <span></span>
+        </button>
+
+        <nav class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <button class="close-sidebar" onclick="toggleSidebar()">×</button>
+            </div>
+
+            <div class="sidebar-items">
+                <a href="/web/admin/users/" class="sidebar-item">Tổng Quan</a>
+                <a href="/web/admin/users/" class="sidebar-item">Bản Đồ</a>
+                <a href="/web/admin/users/" class="sidebar-item">Sơ Đồ</a>
+                <a href="/tham-quan" target="_blank" class="sidebar-item">Tham Quan</a>
+                <a href="/web/admin/users/" class="sidebar-item">Bán Vé</a>
+                <a href="/web/admin/users/" class="sidebar-item">Khách Hàng</a>
+                <a href="/web/admin/users/" class="sidebar-item">Check-in</a>
+                <a href="/web/admin/users/" class="sidebar-item">Check-out</a>
+                <a href="/web/admin/users/" class="sidebar-item">Lịch Sử Tham Quan</a>
+                
+                <a href="/users.html" class="sidebar-item active" style="border-top:2px solid rgba(255,255,255,0.1);margin-top:10px;padding-top:15px">Quản Lý User</a>
+                <a href="/orders.html" class="sidebar-item">Quản Lý Đơn Hàng</a>
+                
+                <button class="sidebar-item logout-btn" onclick="handleLogout()" style="background:#dc3545;color:white;margin-top:auto;font-weight:600;border-top:2px solid rgba(255,255,255,0.2);">
+                    Đăng Xuất
+                </button>
+            </div>
+        </nav>
+
+        <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
+        <main class="main-content">
+            <div id="users-page" class="page active">
+                <h2 class="page-title">Quản Lý Người Dùng</h2>
+                
+                <div class="tabs-container">
+                    <div class="tabs">
+                        <button class="tab-btn active" data-tab="internal">Nhân Viên Nội Bộ</button>
+                        <button class="tab-btn" data-tab="customer">Khách Hàng</button>
+                    </div>
+                </div>
+
+                <div id="internal-tab" class="tab-content active">
+                    <div class="filters-bar">
+                        <input type="text" id="search-internal" placeholder="Tìm kiếm theo tên hoặc username..." class="search-input">
+                        <span id="internal-count" class="count-badge">Tổng: 0 người dùng</span>
+                        <button id="refresh-internal" class="btn btn-secondary">Làm mới</button>
+                    </div>
+
+                    <div class="card">
+                        <div class="table-responsive">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Tên đăng nhập</th>
+                                        <th>Họ và tên</th>
+                                        <th>Email</th>
+                                        <th>Số điện thoại</th>
+                                        <th>Vai trò</th>
+                                        <th>Trạng thái</th>
+                                        <th>Thao tác</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="internal-users-tbody">
+                                    <tr>
+                                        <td colspan="8" style="text-align:center;padding:3rem;color:#999">
+                                            Đang tải dữ liệu...
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="customer-tab" class="tab-content">
+                    <div class="filters-bar">
+                        <input type="text" id="search-customer" placeholder="Tìm kiếm theo tên hoặc username..." class="search-input">
+                        <span id="customer-count" class="count-badge">Tổng: 0 khách hàng</span>
+                        <button id="refresh-customer" class="btn btn-secondary">Làm mới</button>
+                    </div>
+
+                    <div class="card">
+                        <div class="table-responsive">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Tên đăng nhập</th>
+                                        <th>Họ và tên</th>
+                                        <th>Email</th>
+                                        <th>Số điện thoại</th>
+                                        <th>Trạng thái</th>
+                                        <th>Thao tác</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="customer-users-tbody">
+                                    <tr>
+                                        <td colspan="7" style="text-align:center;padding:3rem;color:#999">
+                                            Đang tải dữ liệu...
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modals -->
+    <div id="change-role-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Thay Đổi Vai Trò</h3>
+                <button class="close-btn" onclick="closeModal('change-role-modal')">&times;</button>
+            </div>
+            <form id="change-role-form">
+                <input type="hidden" id="role-user-id">
+                <div class="form-group">
+                    <label>Người dùng</label>
+                    <input type="text" id="role-username" readonly>
+                </div>
+                <div class="form-group">
+                    <label>Vai trò mới</label>
+                    <select id="new-role" required>
+                        <option value="">-- Chọn vai trò --</option>
+                    </select>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('change-role-modal')">Hủy</button>
+                    <button type="submit" class="btn btn-primary">Xác nhận</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="change-password-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Đổi Mật Khẩu</h3>
+                <button class="close-btn" onclick="closeModal('change-password-modal')">&times;</button>
+            </div>
+            <form id="change-password-form">
+                <input type="hidden" id="password-user-id">
+                <div class="form-group">
+                    <label>Người dùng</label>
+                    <input type="text" id="password-username" readonly>
+                </div>
+                <div class="form-group">
+                    <label>Mật khẩu mới</label>
+                    <input type="password" id="new-password" required minlength="6" placeholder="Tối thiểu 6 ký tự">
+                </div>
+                <div class="form-group">
+                    <label>Xác nhận mật khẩu</label>
+                    <input type="password" id="confirm-password" required minlength="6" placeholder="Nhập lại mật khẩu">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('change-password-modal')">Hủy</button>
+                    <button type="submit" class="btn btn-primary">Xác nhận</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="delete-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Xác Nhận Xóa</h3>
+                <button class="close-btn" onclick="closeModal('delete-modal')">&times;</button>
+            </div>
+            <input type="hidden" id="delete-user-id">
+            <p style="padding:1rem 0">
+                Bạn có chắc chắn muốn xóa người dùng <strong id="delete-username"></strong>?
+                <br><br>
+                Tài khoản sẽ bị vô hiệu hóa và không thể đăng nhập.
+            </p>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('delete-modal')">Hủy</button>
+                <button type="button" class="btn btn-danger" onclick="confirmDelete()">Xóa</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="loading" class="loading">
+        <div class="loading-spinner"></div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script src="/js/users.js"></script>
+    <script>
+        async function handleLogout() {
+            if (!confirm('Bạn có chắc chắn muốn đăng xuất?')) return;
+            try {
+                await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+                window.location.href = '/web/admin/login/';
+            } catch (error) {
+                window.location.href = '/web/admin/login/';
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            UserManager.init();
+        });
+    </script>
+</body>
+</html>

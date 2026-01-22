@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quản Lý Đơn Hàng - Bảo Tàng Hồ Chí Minh</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script>
+    function toggleSidebar() {
+        const sidebar = document.getElementById('sidebar');
+        const overlay = document.getElementById('sidebarOverlay');
+        const hamburger = document.getElementById('hamburgerBtn');
+        
+        if (sidebar && overlay && hamburger) {
+            sidebar.classList.toggle('open');
+            overlay.classList.toggle('active');
+            hamburger.classList.toggle('active');
+        }
+    }
+    </script>
+    <style>
+        .page-header {
+            background: white;
+            padding: 2rem;
+            border-radius: 15px;
+            margin-bottom: 2rem;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .page-header h1 {
+            color: #c41e3a;
+            margin-bottom: 0.5rem;
+        }
+
+        .page-header p {
+            color: #666;
+        }
+
+        .stats-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card-custom {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 15px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .stat-info h3 {
+            color: #666;
+            font-size: 0.95rem;
+            font-weight: 500;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-info p {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #2d3748;
+        }
+
+        .filters-bar {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 15px;
+            margin-bottom: 2rem;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .filter-buttons {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .filter-btn {
+            padding: 0.7rem 1.5rem;
+            border: 2px solid #e0e0e0;
+            background: white;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: #666;
+        }
+
+        .filter-btn:hover {
+            border-color: #c41e3a;
+            color: #c41e3a;
+        }
+
+        .filter-btn.active {
+            background: #c41e3a;
+            color: white;
+            border-color: #c41e3a;
+        }
+
+        .orders-table {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .table-responsive {
+            overflow-x: auto;
+        }
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .data-table thead {
+            background: #f7fafc;
+        }
+
+        .data-table th {
+            padding: 1rem;
+            text-align: left;
+            font-weight: 600;
+            color: #4a5568;
+            border-bottom: 2px solid #e2e8f0;
+        }
+
+        .data-table td {
+            padding: 1rem;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .data-table tbody tr:hover {
+            background: #f7fafc;
+        }
+
+        .status-badge {
+            padding: 0.4rem 0.8rem;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .status-waiting_confirmation {
+            background: #cce5ff;
+            color: #004085;
+        }
+
+        .status-paid {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-rejected {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .btn-chi-tiet {
+            padding: 0.5rem 1rem;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.85rem;
+        }
+
+        .btn-chi-tiet:hover {
+            background: #5568d3;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            justify-content: center;
+            align-items: center;
+            z-index: 10000;
+            padding: 1rem;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content-custom {
+            background: white;
+            border-radius: 15px;
+            max-width: 900px;
+            width: 100%;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .modal-header-custom {
+            padding: 1.5rem 2rem;
+            border-bottom: 2px solid #e2e8f0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-header-custom h3 {
+            color: #c41e3a;
+            font-size: 1.3rem;
+        }
+
+        .close-modal-btn {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: #999;
+            line-height: 1;
+        }
+
+        .close-modal-btn:hover {
+            color: #333;
+        }
+
+        .modal-body-custom {
+            padding: 2rem;
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .info-section {
+            background: #f8f9fa;
+            padding: 1.5rem;
+            border-radius: 10px;
+        }
+
+        .info-section h4 {
+            color: #2d3748;
+            margin-bottom: 1rem;
+            font-size: 1rem;
+            font-weight: 600;
+        }
+
+        .info-row {
+            display: flex;
+            margin-bottom: 0.8rem;
+        }
+
+        .info-label {
+            font-weight: 500;
+            color: #666;
+            min-width: 120px;
+        }
+
+        .info-value {
+            color: #2d3748;
+            font-weight: 600;
+        }
+
+        .payment-proof-section {
+            margin-top: 1.5rem;
+            padding: 1.5rem;
+            background: #f8f9fa;
+            border-radius: 10px;
+        }
+
+        .payment-proof-section h4 {
+            margin-bottom: 1rem;
+            color: #2d3748;
+        }
+
+        #payment-proof-img {
+            max-width: 100%;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .modal-footer-custom {
+            padding: 1.5rem 2rem;
+            border-top: 2px solid #e2e8f0;
+            display: flex;
+            gap: 1rem;
+            justify-content: flex-end;
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #218838;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            color: #999;
+        }
+
+        .empty-state i {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+
+        /* View Image Button - Beautiful gradient like Chi tiết */
+        .btn-view-image {
+            padding: 0.6rem 1.2rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-view-image:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.5);
+        }
+
+        .btn-view-image i {
+            margin-right: 0.4rem;
+        }
+
+        /* Detail Button */
+        .btn-detail {
+            padding: 0.6rem 1.2rem;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+
+        .btn-detail:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+        }
+
+        .btn-detail i {
+            margin-right: 0.4rem;
+        }
+
+        /* Pagination */
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 2rem;
+            flex-wrap: wrap;
+        }
+
+        .pagination button {
+            padding: 0.6rem 1rem;
+            border: 1px solid #e0e0e0;
+            background: white;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+            color: #333;
+        }
+
+        .pagination button:hover:not(:disabled) {
+            background: #c41e3a;
+            color: white;
+            border-color: #c41e3a;
+        }
+
+        .pagination button.active {
+            background: #c41e3a;
+            color: white;
+            border-color: #c41e3a;
+        }
+
+        .pagination button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            background: #f5f5f5;
+        }
+
+        .pagination .pagination-ellipsis {
+            padding: 0.6rem 0.5rem;
+            color: #999;
+        }
+
+        .pagination .page-info {
+            margin-left: 1rem;
+            font-size: 0.9rem;
+            color: #666;
+            padding: 0.6rem 1rem;
+            background: #f8f9fa;
+            border-radius: 6px;
+        }
+
+        /* Image Modal */
+        .modal#imageModal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.95);
+            z-index: 10000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal#imageModal.active {
+            display: flex;
+        }
+
+        .modal#imageModal .modal-content {
+            max-width: 90%;
+            max-height: 90vh;
+            position: relative;
+        }
+
+        .modal#imageModal img {
+            max-width: 100%;
+            max-height: 90vh;
+            border-radius: 8px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+        }
+
+        .modal#imageModal .modal-close {
+            position: absolute;
+            top: -50px;
+            right: 0;
+            background: white;
+            border: none;
+            width: 45px;
+            height: 45px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 1.5rem;
+            color: #333;
+            transition: all 0.3s ease;
+        }
+
+        .modal#imageModal .modal-close:hover {
+            background: #c41e3a;
+            color: white;
+            transform: rotate(90deg);
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <header class="header">
+            <h1>Bảo Tàng Hồ Chí Minh</h1>
+            <p>Hệ Thống Quản Lý Tham Quan</p>
+        </header>
+
+        <button class="hamburger-btn" id="hamburgerBtn" onclick="toggleSidebar()">
+            <span></span>
+            <span></span>
+            <span></span>
+        </button>
+
+        <nav class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <button class="close-sidebar" onclick="toggleSidebar()">×</button>
+            </div>
+
+            <div class="sidebar-items">
+                <a href="/web/admin/users/" class="sidebar-item">Tổng Quan</a>
+                <a href="/web/admin/users/" class="sidebar-item">Bản Đồ</a>
+                <a href="/web/admin/users/" class="sidebar-item">Sơ Đồ</a>
+                <a href="/tham-quan" target="_blank" class="sidebar-item">Tham Quan</a>
+                <a href="/web/admin/users/" class="sidebar-item">Bán Vé</a>
+                <a href="/web/admin/users/" class="sidebar-item">Khách Hàng</a>
+                <a href="/web/admin/users/" class="sidebar-item">Check-in</a>
+                <a href="/web/admin/users/" class="sidebar-item">Check-out</a>
+                <a href="/web/admin/users/" class="sidebar-item">Lịch Sử Tham Quan</a>
+                
+                <a href="/users.html" class="sidebar-item" style="border-top:2px solid rgba(255,255,255,0.1);margin-top:10px;padding-top:15px">Quản Lý User</a>
+                <a href="/orders.html" class="sidebar-item active">Quản Lý Đơn Hàng</a>
+                
+                <button class="sidebar-item logout-btn" onclick="handleLogout()" style="background:#dc3545;color:white;margin-top:auto;font-weight:600;border-top:2px solid rgba(255,255,255,0.2);">
+                    Đăng Xuất
+                </button>
+            </div>
+        </nav>
+
+        <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
+        <main class="main-content">
+            <div class="page active">
+                <div class="page-header">
+                    <h1>Quản Lý Đơn Hàng</h1>
+                    <p>Xác nhận thanh toán và quản lý đơn đặt vé online</p>
+                </div>
+                
+                <div class="stats-cards">
+                    <div class="stat-card-custom">
+                        <div class="stat-info">
+                            <h3>Chờ xác nhận</h3>
+                            <p id="stat-pending">0</p>
+                        </div>
+                        <i class="fas fa-clock" style="font-size:2.5rem;color:#ffc107;opacity:0.3"></i>
+                    </div>
+                    <div class="stat-card-custom">
+                        <div class="stat-info">
+                            <h3>Đã duyệt hôm nay</h3>
+                            <p id="stat-today">0</p>
+                        </div>
+                        <i class="fas fa-check-circle" style="font-size:2.5rem;color:#28a745;opacity:0.3"></i>
+                    </div>
+                    <div class="stat-card-custom">
+                        <div class="stat-info">
+                            <h3>Doanh thu tháng này</h3>
+                            <p id="stat-revenue">0đ</p>
+                        </div>
+                        <i class="fas fa-dollar-sign" style="font-size:2.5rem;color:#17a2b8;opacity:0.3"></i>
+                    </div>
+                </div>
+
+                <div class="filters-bar">
+                    <div class="filter-buttons">
+                        <button class="filter-btn active" data-status="all">Tất cả</button>
+                        <button class="filter-btn" data-status="pending">Chờ thanh toán</button>
+                        <button class="filter-btn" data-status="waiting_confirmation">Chờ xác nhận</button>
+                        <button class="filter-btn" data-status="paid">Đã duyệt</button>
+                        <button class="filter-btn" data-status="rejected">Đã từ chối</button>
+                    </div>
+                    <div style="display:flex;gap:1rem;align-items:center">
+                        <span id="orders-count">Tổng: 0 đơn</span>
+                        <button id="refresh-orders" class="btn btn-secondary">Làm mới</button>
+                    </div>
+                </div>
+
+                <div class="orders-table">
+                    <div class="table-responsive">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Mã đơn</th>
+                                    <th>Khách hàng</th>
+                                    <th>Số điện thoại</th>
+                                    <th>Loại vé</th>
+                                    <th>Số lượng</th>
+                                    <th>Tổng tiền</th>
+                                    <th>Chứng từ</th>
+                                    <th>Ngày tạo</th>
+                                    <th>Trạng thái</th>
+                                    <th>Thao tác</th>
+                                </tr>
+                            </thead>
+                            <tbody id="orders-tbody">
+                                <tr>
+                                    <td colspan="10" class="empty-state">
+                                        <i class="fas fa-shopping-cart"></i>
+                                        <p>Đang tải dữ liệu...</p>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- Pagination -->
+                    <div class="pagination" id="pagination">
+                        <!-- Pagination buttons will be inserted here by JS -->
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal Chi Tiết Đơn Hàng -->
+    <div id="order-detail-modal" class="modal">
+        <div class="modal-content-custom">
+            <div class="modal-header-custom">
+                <h3>Chi Tiết Đơn Hàng <span id="modal-order-code"></span></h3>
+                <button class="close-modal-btn" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="modal-body-custom">
+                <div class="info-grid">
+                    <div class="info-section">
+                        <h4>Thông Tin Khách Hàng</h4>
+                        <div class="info-row">
+                            <span class="info-label">Họ và tên:</span>
+                            <span class="info-value" id="detail-customer-name"></span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Số điện thoại:</span>
+                            <span class="info-value" id="detail-customer-phone"></span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Email:</span>
+                            <span class="info-value" id="detail-customer-email"></span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Ghi chú:</span>
+                            <span class="info-value" id="detail-customer-note"></span>
+                        </div>
+                    </div>
+
+                    <div class="info-section">
+                        <h4>Thông Tin Đơn Hàng</h4>
+                        <div class="info-row">
+                            <span class="info-label">Loại vé:</span>
+                            <span class="info-value" id="detail-ticket-type"></span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Số lượng:</span>
+                            <span class="info-value" id="detail-quantity"></span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Đơn giá:</span>
+                            <span class="info-value" id="detail-unit-price"></span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Tổng tiền:</span>
+                            <span class="info-value" id="detail-total-price" style="color:#c41e3a;font-size:1.2rem"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="info-section" style="margin-top:1.5rem">
+                    <h4>Thông Tin Chuyển Khoản</h4>
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem">
+                        <div class="info-row">
+                            <span class="info-label">Ngân hàng:</span>
+                            <span class="info-value" id="detail-bank-name"></span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Số tài khoản:</span>
+                            <span class="info-value" id="detail-bank-account"></span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Chủ tài khoản:</span>
+                            <span class="info-value" id="detail-bank-account-name"></span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Mã giao dịch:</span>
+                            <span class="info-value" id="detail-transaction-ref"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="payment-proof-section">
+                    <h4>Hình Ảnh Chứng Từ Thanh Toán</h4>
+                    <img id="payment-proof-img" alt="Chứng từ thanh toán" style="display:none">
+                </div>
+            </div>
+            <div class="modal-footer-custom" id="order-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeModal()">Đóng</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Từ Chối -->
+    <div id="reject-modal" class="modal">
+        <div class="modal-content-custom" style="max-width:500px">
+            <div class="modal-header-custom">
+                <h3>Từ Chối Đơn Hàng</h3>
+                <button class="close-modal-btn" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="modal-body-custom">
+                <p style="margin-bottom:1rem;color:#666">Vui lòng nhập lý do từ chối:</p>
+                <textarea id="rejection-reason" rows="4" style="width:100%;padding:0.8rem;border:1px solid #e2e8f0;border-radius:8px;font-size:0.95rem" placeholder="Ví dụ: Chứng từ không hợp lệ, thông tin chuyển khoản sai..."></textarea>
+            </div>
+            <div class="modal-footer-custom">
+                <button type="button" class="btn btn-secondary" onclick="closeModal()">Hủy</button>
+                <button type="button" class="btn btn-danger" onclick="OrderManager.confirmReject()">Xác nhận từ chối</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="loading" class="loading">
+        <div class="loading-spinner"></div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script src="/js/orders.js"></script>
+    <script>
+        async function handleLogout() {
+            if (!confirm('Bạn có chắc chắn muốn đăng xuất?')) return;
+            try {
+                await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+                window.location.href = '/web/admin/login/';
+            } catch (error) {
+                window.location.href = '/web/admin/login/';
+            }
+        }
+
+        function openModal(modalId) {
+            const modal = document.getElementById(modalId || 'order-detail-modal');
+            if (modal) modal.classList.add('active');
+        }
+
+        function closeModal() {
+            document.querySelectorAll('.modal').forEach(m => m.classList.remove('active'));
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            OrderManager.init();
+        });
+    </script>
+
+    <!-- Image Modal -->
+    <div class="modal" id="imageModal">
+        <div class="modal-content">
+            <button class="modal-close" onclick="closeImageModal()">
+                <i class="fas fa-times"></i>
+            </button>
+            <img id="modalImage" src="" alt="Chứng từ thanh toán">
+        </div>
+    </div>
+
+</body>
+</html>

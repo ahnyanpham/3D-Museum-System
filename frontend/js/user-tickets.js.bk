@@ -1,0 +1,444 @@
+// ==========================================
+// USER-TICKETS.JS - VÉ CỦA TÔI (CUSTOMER)
+// Dành cho Khách hàng xem vé đã mua
+// ==========================================
+
+// Define API_URL if not already defined
+const API_URL = window.API_URL || '/api';
+
+const UserTicketManager = {
+    tickets: [],
+    currentFilter: 'all', // all, valid, used, cancelled, pending
+    currentPage: 1,
+    itemsPerPage: 12,
+    
+    async init() {
+        console.log('User Ticket Manager initialized');
+        this.setupEventListeners();
+        await this.loadMyTickets();
+    },
+    
+    setupEventListeners() {
+        // Filter buttons
+        const filterBtns = document.querySelectorAll('.filter-btn');
+        filterBtns.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const filter = e.target.dataset.filter || 'all';
+                this.setFilter(filter);
+            });
+        });
+        
+        // Refresh button
+        const refreshBtn = document.getElementById('refresh-my-tickets');
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', () => this.loadMyTickets());
+        }
+        
+        // Items per page selector
+        const itemsPerPageSelect = document.getElementById('items-per-page');
+        if (itemsPerPageSelect) {
+            itemsPerPageSelect.addEventListener('change', (e) => {
+                this.itemsPerPage = parseInt(e.target.value);
+                this.currentPage = 1;
+                this.renderTickets();
+            });
+        }
+    },
+    
+    async loadMyTickets() {
+        if (typeof showLoading === 'function') showLoading();
+        
+        try {
+            // ✅ USER: Load customer's own tickets
+            const response = await fetch(`${API_URL}/customer/tickets`, {
+                method: 'GET',
+                credentials: 'include',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            const data = await response.json();
+            
+            if (typeof hideLoading === 'function') hideLoading();
+            
+            if (data.success) {
+                this.tickets = data.data || [];
+                console.log('Loaded my tickets:', this.tickets.length);
+                this.currentPage = 1;
+                this.renderTickets();
+            } else {
+                throw new Error(data.message || 'Lỗi tải danh sách vé');
+            }
+        } catch (error) {
+            if (typeof hideLoading === 'function') hideLoading();
+            console.error('Load my tickets error:', error);
+            
+            if (typeof showToast === 'function') {
+                showToast('Lỗi tải danh sách vé: ' + error.message, 'error');
+            } else {
+                alert('Lỗi tải danh sách vé: ' + error.message);
+            }
+        }
+    },
+    
+    setFilter(filter) {
+        this.currentFilter = filter;
+        this.currentPage = 1;
+        
+        // Update active button
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            btn.classList.remove('active');
+            if ((btn.dataset.filter || 'all') === filter) {
+                btn.classList.add('active');
+            }
+        });
+        
+        this.renderTickets();
+    },
+    
+    getFilteredTickets() {
+        if (this.currentFilter === 'all') {
+            return this.tickets;
+        }
+        return this.tickets.filter(t => t.status === this.currentFilter);
+    },
+    
+    renderTickets() {
+        const container = document.getElementById('my-tickets-list');
+        if (!container) {
+            console.error('Container #my-tickets-list not found!');
+            return;
+        }
+        
+        const filteredTickets = this.getFilteredTickets();
+        
+        // Update count
+        const countElement = document.getElementById('tickets-count');
+        if (countElement) {
+            countElement.textContent = `Tổng: ${filteredTickets.length} vé`;
+        }
+        
+        if (filteredTickets.length === 0) {
+            container.innerHTML = `
+                <div style="text-align:center;padding:80px 20px;color:#999">
+                    <i class="fas fa-ticket-alt" style="font-size:72px;opacity:0.3;margin-bottom:20px"></i>
+                    <h3 style="color:#718096;margin:20px 0 10px 0">
+                        ${this.currentFilter === 'all' ? 'Bạn chưa có vé nào' : 'Không có vé ' + this.getStatusLabel(this.currentFilter)}
+                    </h3>
+                    <p style="color:#a0aec0;margin:0">
+                        ${this.currentFilter === 'all' ? 'Hãy đặt vé để tham quan bảo tàng' : 'Thử chọn bộ lọc khác'}
+                    </p>
+                </div>
+            `;
+            return;
+        }
+        
+        // Pagination
+        const start = (this.currentPage - 1) * this.itemsPerPage;
+        const end = start + this.itemsPerPage;
+        const pageTickets = filteredTickets.slice(start, end);
+        
+        // Render tickets grid
+        container.innerHTML = `
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:20px">
+                ${pageTickets.map(ticket => this.renderTicketCard(ticket)).join('')}
+            </div>
+        `;
+        
+        // Render pagination
+        this.renderPagination(filteredTickets.length);
+        
+        // Add hover effects
+        this.addCardHoverEffects();
+    },
+    
+    renderTicketCard(ticket) {
+        const statusConfig = {
+            'valid': { color: '#28a745', label: 'Còn hạn', icon: 'fa-check-circle' },
+            'used': { color: '#6c757d', label: 'Đã sử dụng', icon: 'fa-check-double' },
+            'cancelled': { color: '#dc3545', label: 'Đã hủy', icon: 'fa-times-circle' },
+            'pending': { color: '#ffc107', label: 'Chờ thanh toán', icon: 'fa-clock' }
+        };
+        
+        const status = statusConfig[ticket.status] || statusConfig['pending'];
+        
+        return `
+            <div class="ticket-card" 
+                 data-ticket-id="${ticket.ticket_id || ''}"
+                 style="background:white;border-radius:12px;padding:20px;box-shadow:0 2px 8px rgba(0,0,0,0.1);transition:all 0.3s;position:relative;overflow:hidden">
+                
+                <!-- Status badge -->
+                <div style="position:absolute;top:15px;right:15px">
+                    <span style="background:${status.color};color:white;padding:6px 12px;border-radius:20px;font-size:13px;font-weight:600;display:flex;align-items:center;gap:5px">
+                        <i class="fas ${status.icon}"></i>
+                        ${status.label}
+                    </span>
+                </div>
+                
+                <!-- Ticket code header -->
+                <div style="margin-bottom:15px;padding-bottom:15px;border-bottom:2px solid #e2e8f0">
+                    <h3 style="margin:0;font-family:monospace;color:#2d3748;font-size:20px;font-weight:700;letter-spacing:1px">
+                        ${ticket.ticket_code || 'N/A'}
+                    </h3>
+                </div>
+                
+                <!-- Ticket details -->
+                <div style="display:grid;gap:12px;margin-bottom:20px">
+                    <div style="display:flex;align-items:center;gap:10px">
+                        <i class="fas fa-ticket-alt" style="width:20px;color:#667eea;font-size:16px"></i>
+                        <div style="flex:1">
+                            <div style="font-size:12px;color:#a0aec0">Loại vé</div>
+                            <div style="font-weight:600;color:#2d3748">${ticket.ticket_type_name || 'N/A'}</div>
+                        </div>
+                    </div>
+                    
+                    <div style="display:flex;align-items:center;gap:10px">
+                        <i class="fas fa-users" style="width:20px;color:#667eea;font-size:16px"></i>
+                        <div style="flex:1">
+                            <div style="font-size:12px;color:#a0aec0">Số lượng</div>
+                            <div style="font-weight:600;color:#2d3748">${ticket.quantity || 1} người</div>
+                        </div>
+                    </div>
+                    
+                    <div style="display:flex;align-items:center;gap:10px">
+                        <i class="fas fa-calendar" style="width:20px;color:#667eea;font-size:16px"></i>
+                        <div style="flex:1">
+                            <div style="font-size:12px;color:#a0aec0">Ngày tham quan</div>
+                            <div style="font-weight:600;color:#2d3748">${this.formatDate(ticket.valid_date)}</div>
+                        </div>
+                    </div>
+                    
+                    <div style="display:flex;align-items:center;gap:10px">
+                        <i class="fas fa-money-bill-wave" style="width:20px;color:#667eea;font-size:16px"></i>
+                        <div style="flex:1">
+                            <div style="font-size:12px;color:#a0aec0">Tổng tiền</div>
+                            <div style="font-weight:700;color:#c41e3a;font-size:18px">
+                                ${this.formatCurrency((ticket.price || 0) * (ticket.quantity || 1))}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    ${ticket.payment_method ? `
+                        <div style="display:flex;align-items:center;gap:10px">
+                            <i class="fas fa-credit-card" style="width:20px;color:#667eea;font-size:16px"></i>
+                            <div style="flex:1">
+                                <div style="font-size:12px;color:#a0aec0">Thanh toán</div>
+                                <div style="font-weight:600;color:#2d3748">${this.getPaymentLabel(ticket.payment_method)}</div>
+                            </div>
+                        </div>
+                    ` : ''}
+                </div>
+                
+                <!-- Action buttons -->
+                <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
+                    ${ticket.status === 'valid' ? `
+                        <button onclick="UserTicketManager.viewQR('${ticket.ticket_code}')" 
+                                class="btn btn-primary"
+                                style="padding:10px 20px;font-size:14px;border-radius:8px">
+                            <i class="fas fa-qrcode"></i> Xem QR
+                        </button>
+                    ` : ''}
+                </div>
+            </div>
+        `;
+    },
+    
+    renderPagination(totalItems) {
+        const paginationContainer = document.getElementById('tickets-pagination');
+        if (!paginationContainer) return;
+        
+        const totalPages = Math.ceil(totalItems / this.itemsPerPage);
+        
+        if (totalPages <= 1) {
+            paginationContainer.innerHTML = '';
+            return;
+        }
+        
+        let html = '<div style="display:flex;gap:8px;justify-content:center;align-items:center;flex-wrap:wrap;margin-top:30px">';
+        
+        // Previous button
+        if (this.currentPage > 1) {
+            html += `
+                <button onclick="UserTicketManager.goToPage(${this.currentPage - 1})" 
+                        class="btn btn-sm"
+                        style="padding:8px 16px">
+                    <i class="fas fa-chevron-left"></i> Trước
+                </button>
+            `;
+        }
+        
+        // Page numbers
+        for (let i = 1; i <= totalPages; i++) {
+            if (i === 1 || i === totalPages || (i >= this.currentPage - 2 && i <= this.currentPage + 2)) {
+                const activeClass = i === this.currentPage ? 'btn-primary' : 'btn-secondary';
+                html += `
+                    <button onclick="UserTicketManager.goToPage(${i})" 
+                            class="btn btn-sm ${activeClass}"
+                            style="padding:8px 16px;min-width:40px">
+                        ${i}
+                    </button>
+                `;
+            } else if (i === this.currentPage - 3 || i === this.currentPage + 3) {
+                html += '<span style="padding:0 8px;color:#a0aec0">...</span>';
+            }
+        }
+        
+        // Next button
+        if (this.currentPage < totalPages) {
+            html += `
+                <button onclick="UserTicketManager.goToPage(${this.currentPage + 1})" 
+                        class="btn btn-sm"
+                        style="padding:8px 16px">
+                    Sau <i class="fas fa-chevron-right"></i>
+                </button>
+            `;
+        }
+        
+        html += '</div>';
+        paginationContainer.innerHTML = html;
+    },
+    
+    goToPage(page) {
+        this.currentPage = page;
+        this.renderTickets();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    },
+    
+    addCardHoverEffects() {
+        const cards = document.querySelectorAll('.ticket-card');
+        cards.forEach(card => {
+            card.addEventListener('mouseenter', () => {
+                card.style.transform = 'translateY(-4px)';
+                card.style.boxShadow = '0 8px 16px rgba(0,0,0,0.15)';
+            });
+            card.addEventListener('mouseleave', () => {
+                card.style.transform = 'translateY(0)';
+                card.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)';
+            });
+        });
+    },
+    
+    viewQR(ticketCode) {
+        const modal = document.getElementById('qr-modal') || document.getElementById('ticket-modal');
+        const modalBody = document.getElementById('qr-modal-body') || document.getElementById('ticket-details');
+        
+        if (!modal || !modalBody) {
+            console.error('QR modal not found!');
+            alert('Không tìm thấy modal QR');
+            return;
+        }
+        
+        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(ticketCode)}`;
+        
+        modalBody.innerHTML = `
+            <div style="text-align:center;padding:30px">
+                <h2 style="color:#2d3748;margin-bottom:10px;font-size:24px">Mã QR Vé</h2>
+                <p style="color:#718096;margin-bottom:30px">Xuất trình mã này tại cổng vào</p>
+                
+                <div style="background:linear-gradient(135deg, #667eea 0%, #764ba2 100%);padding:30px;border-radius:16px;display:inline-block;box-shadow:0 8px 24px rgba(102,126,234,0.3)">
+                    <div style="background:white;padding:20px;border-radius:12px">
+                        <img src="${qrUrl}" 
+                             alt="QR Code" 
+                             style="width:300px;height:300px;display:block"
+                             crossorigin="anonymous">
+                    </div>
+                </div>
+                
+                <div style="margin:30px 0;padding:20px;background:#f7fafc;border-radius:12px">
+                    <p style="margin:0;color:#4a5568;font-weight:600;font-family:monospace;font-size:20px;letter-spacing:2px">
+                        ${ticketCode}
+                    </p>
+                </div>
+                
+                <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:15px;margin-bottom:25px">
+                    <p style="margin:0;color:#856404;font-size:14px">
+                        <i class="fas fa-info-circle"></i>
+                        <strong>Lưu ý:</strong> Vui lòng kiểm tra ngày tham quan và đến đúng giờ
+                    </p>
+                </div>
+                
+                <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
+                    <button onclick="UserTicketManager.downloadQR('${ticketCode}')" 
+                            class="btn btn-primary"
+                            style="padding:12px 24px;font-size:16px">
+                        <i class="fas fa-download"></i> Tải về
+                    </button>
+                    <button onclick="UserTicketManager.closeQRModal()" 
+                            class="btn btn-secondary"
+                            style="padding:12px 24px;font-size:16px">
+                        <i class="fas fa-times"></i> Đóng
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        modal.classList.add('active');
+        if (modal.style) modal.style.display = 'flex';
+    },
+    
+    downloadQR(ticketCode) {
+        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=800x800&data=${encodeURIComponent(ticketCode)}`;
+        
+        const link = document.createElement('a');
+        link.href = qrUrl;
+        link.download = `ve_${ticketCode}.png`;
+        link.target = '_blank';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        if (typeof showToast === 'function') {
+            showToast('Đang tải QR code...', 'success');
+        }
+    },
+    
+    closeQRModal() {
+        const modal = document.getElementById('qr-modal') || document.getElementById('ticket-modal');
+        if (modal) {
+            modal.classList.remove('active');
+            if (modal.style) modal.style.display = 'none';
+        }
+    },
+    
+    // Helper methods
+    formatDate(dateStr) {
+        if (!dateStr) return 'N/A';
+        const date = new Date(dateStr);
+        return date.toLocaleDateString('vi-VN', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+        });
+    },
+    
+    formatCurrency(amount) {
+        if (!amount && amount !== 0) return 'N/A';
+        return new Intl.NumberFormat('vi-VN').format(amount) + ' đ';
+    },
+    
+    getPaymentLabel(method) {
+        const labels = {
+            'cash': 'Tiền mặt',
+            'bank_transfer': 'Chuyển khoản',
+            'card': 'Thẻ',
+            'momo': 'Ví MoMo',
+            'zalopay': 'ZaloPay'
+        };
+        return labels[method] || method;
+    },
+    
+    getStatusLabel(status) {
+        const labels = {
+            'all': 'tất cả',
+            'valid': 'còn hạn',
+            'used': 'đã sử dụng',
+            'cancelled': 'đã hủy',
+            'pending': 'chờ thanh toán'
+        };
+        return labels[status] || status;
+    }
+};
+
+console.log('User Tickets module loaded');

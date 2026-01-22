@@ -1,0 +1,1780 @@
+from flask import Flask, request, jsonify, send_file, session
+from flask_cors import CORS
+from database import get_db_connection
+from auth import AuthManager, login_required, permission_required, role_required
+from email_service import EmailService, init_email_service
+from logger_config import app_logger
+import traceback
+from datetime import datetime, timedelta
+import secrets
+import sqlite3
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
+import io
+import os
+from werkzeug.utils import secure_filename
+
+# ==================== APP INITIALIZATION ====================
+app = Flask(__name__)
+CORS(app, supports_credentials=True)
+
+# CRITICAL: Secret key for sessions
+app.secret_key = 'museum-bennharong-secret-key-2026-fixed'
+
+# Session configuration
+app.config['SESSION_TYPE'] = 'filesystem'
+app.config['PERMANENT_SESSION_LIFETIME'] = 86400  # 24 hours
+
+# Email Configuration
+app.config['MAIL_SERVER'] = 'smtp.gmail.com'
+app.config['MAIL_PORT'] = 587
+app.config['MAIL_USE_TLS'] = True
+app.config['MAIL_USERNAME'] = 'bennharong11@gmail.com'
+app.config['MAIL_PASSWORD'] = 'auja nfqr ddnx xqdl'
+app.config['MAIL_DEFAULT_SENDER'] = 'bennharong11@gmail.com'
+
+# Initialize email service
+init_email_service(app)
+
+# Initialize logger
+logger = app_logger()
+
+logger.info("Museum Backend started with authentication system")
+
+# ==================== HELPER FUNCTIONS ====================
+def api_response(success, message, data=None):
+    response = {
+        'success': success,
+        'message': message,
+        'timestamp': datetime.now().isoformat()
+    }
+    if data is not None:
+        response['data'] = data
+    return jsonify(response)
+
+def handle_error(error, context=""):
+    error_msg = str(error)
+    logger.error(f"Error in {context}: {error_msg}")
+    logger.error(traceback.format_exc())
+    return api_response(False, f"Lỗi: {error_msg}"), 500
+
+# ==================== AUTHENTICATION ROUTES ====================
+
+@app.route('/api/auth/login', methods=['POST'])
+def api_login():
+    """Login endpoint - handles both internal and customer users"""
+    data = request.get_json()
+    username = data.get('username')
+    password = data.get('password')
+    user_type = data.get('user_type', 'internal')
+    
+    if not username or not password:
+        return jsonify({
+            'success': False,
+            'message': 'Vui lòng nhập tên đăng nhập và mật khẩu'
+        }), 400
+    
+    try:
+        db = get_db_connection()
+        session_data, error = AuthManager.login_user(db, username, password, user_type)
+        db.close()
+        
+        if error:
+            logger.warning(f"Login failed for {username}: {error}")
+            return jsonify({
+                'success': False,
+                'message': error
+            }), 401
+        
+        # Set session
+        for key, value in session_data.items():
+            session[key] = value
+        
+        logger.info(f"Login successful: {username} ({user_type})")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Đăng nhập thành công',
+            'data': {
+                'username': session_data['username'],
+                'fullname': session_data['fullname'],
+                'role': session_data['role'],
+                'permissions': session_data['permissions']
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Login error: {str(e)}")
+        logger.error(traceback.format_exc())
+        return jsonify({
+            'success': False,
+            'message': f'Lỗi hệ thống: {str(e)}'
+        }), 500
+
+
+@app.route('/api/auth/logout', methods=['POST'])
+@login_required
+def api_logout():
+    """Logout endpoint"""
+    username = session.get('username', 'unknown')
+    session.clear()
+    logger.info(f"Logout: {username}")
+    return jsonify({
+        'success': True,
+        'message': 'Đăng xuất thành công'
+    })
+
+
+@app.route('/api/auth/session', methods=['GET'])
+def api_check_session():
+    """Check if user is logged in and return session data"""
+    if 'user_id' in session:
+        # Get fresh data from database to include email and phone
+        try:
+            db = get_db_connection()
+            cursor = db.cursor()
+            
+            cursor.execute("""
+                SELECT u.USER_ID, u.USERNAME, u.FULLNAME, u.EMAIL, u.PHONE,
+                       r.ROLE_NAME, r.PERMISSIONS
+                FROM USER u
+                LEFT JOIN USER_ROLE ur ON u.USER_ID = ur.USER_ID
+                LEFT JOIN ROLE r ON ur.ROLE_ID = r.ROLE_ID
+                WHERE u.USER_ID = ? AND u.IS_ACTIVE = 1
+            """, (session['user_id'],))
+            
+            user = cursor.fetchone()
+            db.close()
+            
+            if not user:
+                session.clear()
+                return jsonify({
+                    'success': True,
+                    'logged_in': False
+                })
+            
+            return jsonify({
+                'success': True,
+                'logged_in': True,
+                'data': {
+                    'user_id': user[0],
+                    'username': user[1],
+                    'fullname': user[2],
+                    'email': user[3],
+                    'phone': user[4],
+                    'role': user[5],
+                    'user_type': session.get('user_type'),
+                    'permissions': user[6].split(',') if user[6] else []
+                }
+            })
+        except Exception as e:
+            logger.error(f"Session check error: {str(e)}")
+            return jsonify({
+                'success': True,
+                'logged_in': True,
+                'data': {
+                    'user_id': session.get('user_id'),
+                    'username': session.get('username'),
+                    'fullname': session.get('fullname'),
+                    'email': session.get('email'),
+                    'phone': session.get('phone'),
+                    'role': session.get('role'),
+                    'user_type': session.get('user_type'),
+                    'permissions': session.get('permissions', [])
+                }
+            })
+    else:
+        return jsonify({
+            'success': True,
+            'logged_in': False
+        })
+
+@app.route('/api/auth/register', methods=['POST'])
+def api_register_customer():
+    """Customer registration endpoint"""
+    data = request.get_json()
+    username = data.get('username')
+    password = data.get('password')
+    fullname = data.get('fullname')
+    phone = data.get('phone')
+    email = data.get('email', '')
+    
+    try:
+        db = get_db_connection()
+        user_id, error = AuthManager.register_customer(
+            db, username, password, fullname, phone, email
+        )
+        db.close()
+        
+        if error:
+            return jsonify({
+                'success': False,
+                'message': error
+            }), 400
+        
+        # Send confirmation email if email provided
+        if email:
+            try:
+                EmailService.send_registration_confirmation(email, username, fullname)
+            except Exception as e:
+                logger.error(f"Email send failed: {e}")
+        
+        logger.info(f"New customer registered: {username}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Đăng ký thành công! Vui lòng đăng nhập.',
+            'data': {'user_id': user_id}
+        })
+        
+    except Exception as e:
+        logger.error(f"Registration error: {str(e)}")
+        logger.error(traceback.format_exc())
+        return jsonify({
+            'success': False,
+            'message': f'Lỗi hệ thống: {str(e)}'
+        }), 500
+
+
+@app.route('/api/auth/forgot-password', methods=['POST'])
+def api_forgot_password():
+    """Request password reset"""
+    data = request.get_json()
+    email = data.get('email')
+    
+    if not email:
+        return jsonify({
+            'success': False,
+            'message': 'Vui lòng nhập email'
+        }), 400
+    
+    try:
+        db = get_db_connection()
+        cursor = db.cursor()
+        
+        # Get username for email content
+        cursor.execute("SELECT USERNAME FROM USER WHERE EMAIL = ?", (email,))
+        user = cursor.fetchone()
+        
+        if not user:
+            # Don't reveal if email exists or not for security
+            return jsonify({
+                'success': True,
+                'message': 'Nếu email tồn tại, link đặt lại mật khẩu đã được gửi.'
+            })
+        
+        username = user[0]
+        
+        # Create reset token
+        token, error = AuthManager.create_password_reset_token(db, email)
+        db.close()
+        
+        if error:
+            return jsonify({
+                'success': False,
+                'message': error
+            }), 500
+        
+        # Send email
+        success, error = EmailService.send_password_reset_email(email, username, token)
+        
+        if not success:
+            return jsonify({
+                'success': False,
+                'message': 'Không thể gửi email. Vui lòng thử lại sau.'
+            }), 500
+        
+        logger.info(f"Password reset requested for: {email}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Link đặt lại mật khẩu đã được gửi đến email của bạn.'
+        })
+        
+    except Exception as e:
+        logger.error(f"Forgot password error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': f'Lỗi hệ thống: {str(e)}'
+        }), 500
+
+
+@app.route('/api/auth/reset-password', methods=['POST'])
+def api_reset_password():
+    """Reset password with token"""
+    data = request.get_json()
+    token = data.get('token')
+    new_password = data.get('new_password')
+    
+    if not token or not new_password:
+        return jsonify({
+            'success': False,
+            'message': 'Thiếu thông tin'
+        }), 400
+    
+    try:
+        db = get_db_connection()
+        success, error = AuthManager.reset_password_with_token(db, token, new_password)
+        db.close()
+        
+        if not success:
+            return jsonify({
+                'success': False,
+                'message': error
+            }), 400
+        
+        logger.info(f"Password reset successful with token: {token[:10]}...")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Đặt lại mật khẩu thành công! Vui lòng đăng nhập.'
+        })
+        
+    except Exception as e:
+        logger.error(f"Reset password error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': f'Lỗi hệ thống: {str(e)}'
+        }), 500
+
+
+@app.route('/api/auth/change-password', methods=['POST'])
+@login_required
+def api_change_password():
+    """Change own password"""
+    data = request.get_json()
+    old_password = data.get('old_password')
+    new_password = data.get('new_password')
+    
+    if not old_password or not new_password:
+        return jsonify({
+            'success': False,
+            'message': 'Vui lòng nhập đầy đủ thông tin'
+        }), 400
+    
+    try:
+        db = get_db_connection()
+        user_id = session['user_id']
+        success, error = AuthManager.change_password(db, user_id, old_password, new_password)
+        db.close()
+        
+        if not success:
+            return jsonify({
+                'success': False,
+                'message': error
+            }), 400
+        
+        logger.info(f"Password changed for user_id: {user_id}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Đổi mật khẩu thành công!'
+        })
+        
+    except Exception as e:
+        logger.error(f"Change password error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': f'Lỗi hệ thống: {str(e)}'
+        }), 500
+
+# ==================== PROFILE UPDATE ROUTE ====================
+
+@app.route('/api/profile/update', methods=['PUT'])
+@login_required
+def api_update_profile():
+    """Update customer profile (email and phone)"""
+    data = request.get_json()
+    email = data.get('email', '').strip()
+    phone = data.get('phone', '').strip()
+    
+    # Validate phone
+    if phone and not phone.isdigit():
+        return jsonify({
+            'success': False,
+            'message': 'Số điện thoại không hợp lệ'
+        }), 400
+    
+    if phone and (len(phone) < 10 or len(phone) > 11):
+        return jsonify({
+            'success': False,
+            'message': 'Số điện thoại phải có 10-11 chữ số'
+        }), 400
+    
+    # Validate email
+    import re
+    if email and not re.match(r'^[^\s@]+@[^\s@]+\.[^\s@]+$', email):
+        return jsonify({
+            'success': False,
+            'message': 'Email không hợp lệ'
+        }), 400
+    
+    try:
+        db = get_db_connection()
+        cursor = db.cursor()
+        user_id = session['user_id']
+        
+        # Get customer_id
+        cursor.execute("SELECT CUSTOMER_ID FROM CUSTOMER WHERE USER_ID = ?", (user_id,))
+        customer = cursor.fetchone()
+        
+        if not customer:
+            db.close()
+            return jsonify({
+                'success': False,
+                'message': 'Không tìm thấy thông tin khách hàng'
+            }), 404
+        
+        customer_id = customer[0]
+        
+        # Update CUSTOMER table
+        cursor.execute("""
+            UPDATE CUSTOMER 
+            SET EMAIL = ?, PHONE = ?, UPDATED_AT = ?
+            WHERE CUSTOMER_ID = ?
+        """, (email, phone, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), customer_id))
+        
+        # Also update USER table
+        cursor.execute("""
+            UPDATE USER 
+            SET EMAIL = ?, PHONE = ?, UPDATED_AT = ?
+            WHERE USER_ID = ?
+        """, (email, phone, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), user_id))
+        
+        db.commit()
+        db.close()
+        
+        logger.info(f"Profile updated for user_id: {user_id}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Cập nhật thông tin thành công'
+        })
+        
+    except Exception as e:
+        logger.error(f"Update profile error: {str(e)}")
+        logger.error(traceback.format_exc())
+        return jsonify({
+            'success': False,
+            'message': f'Lỗi hệ thống: {str(e)}'
+        }), 500
+
+# ==================== USER MANAGEMENT ROUTES (Admin only) ====================
+
+@app.route('/api/admin/users', methods=['GET'])
+@permission_required('all')
+def api_get_all_users():
+    """Get all users (internal or customers)"""
+    user_type = request.args.get('type', 'internal')
+    page = int(request.args.get('page', 1))
+    per_page = int(request.args.get('per_page', 10))
+    search = request.args.get('search', '')
+    
+    try:
+        db = get_db_connection()
+        cursor = db.cursor()
+        
+        # Build query
+        query = """
+            SELECT 
+                u.USER_ID, u.USERNAME, u.FULLNAME, u.EMAIL, u.PHONE,
+                u.IS_ACTIVE, u.LAST_LOGIN, u.CREATED_AT,
+                r.ROLE_NAME, r.ROLE_ID
+            FROM USER u
+            LEFT JOIN USER_ROLE ur ON u.USER_ID = ur.USER_ID
+            LEFT JOIN ROLE r ON ur.ROLE_ID = r.ROLE_ID
+            WHERE u.USER_TYPE = ?
+        """
+        params = [user_type]
+        
+        if search:
+            query += " AND (u.USERNAME LIKE ? OR u.FULLNAME LIKE ? OR u.EMAIL LIKE ?)"
+            search_term = f'%{search}%'
+            params.extend([search_term, search_term, search_term])
+        
+        # Count total
+        count_query = f"SELECT COUNT(*) FROM ({query}) AS subquery"
+        cursor.execute(count_query, params)
+        total = cursor.fetchone()[0]
+        
+        # Add pagination
+        query += " ORDER BY u.CREATED_AT DESC LIMIT ? OFFSET ?"
+        params.extend([per_page, (page - 1) * per_page])
+        
+        cursor.execute(query, params)
+        users = []
+        for row in cursor.fetchall():
+            users.append({
+                'user_id': row[0],
+                'username': row[1],
+                'fullname': row[2],
+                'email': row[3],
+                'phone': row[4],
+                'is_active': bool(row[5]),
+                'last_login': row[6],
+                'created_at': row[7],
+                'role_name': row[8],
+                'role_id': row[9]
+            })
+        
+        db.close()
+        
+        return jsonify({
+            'success': True,
+            'data': users,
+            'pagination': {
+                'page': page,
+                'per_page': per_page,
+                'total': total,
+                'pages': (total + per_page - 1) // per_page
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Get users error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': f'Lỗi: {str(e)}'
+        }), 500
+
+
+@app.route('/api/admin/users/<int:user_id>', methods=['GET'])
+@permission_required('all')
+def api_get_user(user_id):
+    """Get user details"""
+    try:
+        db = get_db_connection()
+        cursor = db.cursor()
+        
+        cursor.execute("""
+            SELECT 
+                u.USER_ID, u.USERNAME, u.FULLNAME, u.EMAIL, u.PHONE,
+                u.IS_ACTIVE, u.USER_TYPE, u.LAST_LOGIN, u.CREATED_AT,
+                r.ROLE_NAME, r.ROLE_ID
+            FROM USER u
+            LEFT JOIN USER_ROLE ur ON u.USER_ID = ur.USER_ID
+            LEFT JOIN ROLE r ON ur.ROLE_ID = r.ROLE_ID
+            WHERE u.USER_ID = ?
+        """, (user_id,))
+        
+        row = cursor.fetchone()
+        db.close()
+        
+        if not row:
+            return jsonify({
+                'success': False,
+                'message': 'Không tìm thấy người dùng'
+            }), 404
+        
+        user = {
+            'user_id': row[0],
+            'username': row[1],
+            'fullname': row[2],
+            'email': row[3],
+            'phone': row[4],
+            'is_active': bool(row[5]),
+            'user_type': row[6],
+            'last_login': row[7],
+            'created_at': row[8],
+            'role_name': row[9],
+            'role_id': row[10]
+        }
+        
+        return jsonify({
+            'success': True,
+            'data': user
+        })
+        
+    except Exception as e:
+        logger.error(f"Get user error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': f'Lỗi: {str(e)}'
+        }), 500
+
+
+@app.route('/api/admin/users/<int:user_id>', methods=['PUT'])
+@permission_required('all')
+def api_update_user(user_id):
+    """Update user information"""
+    data = request.get_json()
+    
+    try:
+        db = get_db_connection()
+        cursor = db.cursor()
+        
+        # Build update query
+        updates = []
+        params = []
+        
+        if 'fullname' in data:
+            updates.append('FULLNAME = ?')
+            params.append(data['fullname'])
+        
+        if 'email' in data:
+            updates.append('EMAIL = ?')
+            params.append(data['email'])
+        
+        if 'phone' in data:
+            updates.append('PHONE = ?')
+            params.append(data['phone'])
+        
+        if 'is_active' in data:
+            updates.append('IS_ACTIVE = ?')
+            params.append(1 if data['is_active'] else 0)
+        
+        if updates:
+            updates.append('UPDATED_AT = ?')
+            params.append(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+            
+            updates.append('UPDATED_BY = ?')
+            params.append(session['user_id'])
+            
+            params.append(user_id)
+            
+            query = f"UPDATE USER SET {', '.join(updates)} WHERE USER_ID = ?"
+            cursor.execute(query, params)
+            db.commit()
+        
+        db.close()
+        
+        logger.info(f"User {user_id} updated by {session['username']}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Cập nhật thành công'
+        })
+        
+    except Exception as e:
+        logger.error(f"Update user error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': f'Lỗi: {str(e)}'
+        }), 500
+
+
+@app.route('/api/admin/users/<int:user_id>', methods=['DELETE'])
+@permission_required('all')
+def api_delete_user(user_id):
+    """Delete user (soft delete by setting IS_ACTIVE = 0)"""
+    # Prevent deleting self
+    if user_id == session['user_id']:
+        return jsonify({
+            'success': False,
+            'message': 'Không thể xóa tài khoản của chính mình'
+        }), 400
+    
+    try:
+        db = get_db_connection()
+        cursor = db.cursor()
+        
+        cursor.execute("""
+            UPDATE USER 
+            SET IS_ACTIVE = 0, UPDATED_AT = ?, UPDATED_BY = ?
+            WHERE USER_ID = ?
+        """, (
+            datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            session['user_id'],
+            user_id
+        ))
+        
+        db.commit()
+        db.close()
+        
+        logger.info(f"User {user_id} deleted by {session['username']}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Xóa người dùng thành công'
+        })
+        
+    except Exception as e:
+        logger.error(f"Delete user error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': f'Lỗi: {str(e)}'
+        }), 500
+
+
+@app.route('/api/admin/users/<int:user_id>/change-password', methods=['POST'])
+@permission_required('all')
+def api_admin_change_user_password(user_id):
+    """Admin change user password"""
+    data = request.get_json()
+    new_password = data.get('new_password')
+    
+    if not new_password:
+        return jsonify({
+            'success': False,
+            'message': 'Vui lòng nhập mật khẩu mới'
+        }), 400
+    
+    # Validate password
+    is_valid, message = AuthManager.validate_password(new_password)
+    if not is_valid:
+        return jsonify({
+            'success': False,
+            'message': message
+        }), 400
+    
+    try:
+        db = get_db_connection()
+        cursor = db.cursor()
+        
+        hashed_pwd = AuthManager.hash_password(new_password)
+        cursor.execute("""
+            UPDATE USER 
+            SET PASSWORD = ?, UPDATED_AT = ?, UPDATED_BY = ?
+            WHERE USER_ID = ?
+        """, (
+            hashed_pwd,
+            datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            session['user_id'],
+            user_id
+        ))
+        
+        db.commit()
+        db.close()
+        
+        logger.info(f"Admin {session['username']} changed password for user {user_id}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Đổi mật khẩu thành công'
+        })
+        
+    except Exception as e:
+        logger.error(f"Admin change password error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': f'Lỗi: {str(e)}'
+        }), 500
+
+
+@app.route('/api/admin/users/<int:user_id>/change-role', methods=['POST'])
+@permission_required('all')
+def api_admin_change_user_role(user_id):
+    """Admin change user role"""
+    data = request.get_json()
+    new_role_id = data.get('role_id')
+    
+    if not new_role_id:
+        return jsonify({
+            'success': False,
+            'message': 'Vui lòng chọn vai trò'
+        }), 400
+    
+    try:
+        db = get_db_connection()
+        cursor = db.cursor()
+        
+        # Delete old role
+        cursor.execute("DELETE FROM USER_ROLE WHERE USER_ID = ?", (user_id,))
+        
+        # Assign new role
+        cursor.execute("""
+            INSERT INTO USER_ROLE (USER_ID, ROLE_ID, ASSIGNED_AT)
+            VALUES (?, ?, ?)
+        """, (
+            user_id, new_role_id,
+            datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        ))
+        
+        db.commit()
+        db.close()
+        
+        logger.info(f"Admin {session['username']} changed role for user {user_id} to role {new_role_id}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Thay đổi vai trò thành công'
+        })
+        
+    except Exception as e:
+        logger.error(f"Change role error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': f'Lỗi: {str(e)}'
+        }), 500
+
+
+@app.route('/api/roles', methods=['GET'])
+@login_required
+def api_get_roles():
+    """Get all roles (for dropdown)"""
+    user_type = request.args.get('type', 'internal')
+    
+    try:
+        db = get_db_connection()
+        cursor = db.cursor()
+        
+        if user_type == 'internal':
+            # Exclude Customer role
+            cursor.execute("""
+                SELECT ROLE_ID, ROLE_NAME, DESCRIPTION 
+                FROM ROLE 
+                WHERE ROLE_ID != 6
+                ORDER BY ROLE_ID
+            """)
+        else:
+            # Only Customer role
+            cursor.execute("""
+                SELECT ROLE_ID, ROLE_NAME, DESCRIPTION 
+                FROM ROLE 
+                WHERE ROLE_ID = 6
+            """)
+        
+        roles = []
+        for row in cursor.fetchall():
+            roles.append({
+                'role_id': row[0],
+                'role_name': row[1],
+                'description': row[2]
+            })
+        
+        db.close()
+        
+        return jsonify({
+            'success': True,
+            'data': roles
+        })
+        
+    except Exception as e:
+        logger.error(f"Get roles error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': f'Lỗi: {str(e)}'
+        }), 500
+
+
+# ==================== CUSTOMER TICKET ROUTES ====================
+
+@app.route('/api/customer/tickets', methods=['GET'])
+@login_required
+@permission_required('my_tickets')
+def api_get_customer_tickets():
+    """Get customer's tickets with pagination"""
+    page = int(request.args.get('page', 1))
+    per_page = int(request.args.get('per_page', 10))
+    status_filter = request.args.get('status', '')
+    
+    try:
+        db = get_db_connection()
+        cursor = db.cursor()
+        
+        # Get customer_id from user_id
+        cursor.execute("""
+            SELECT CUSTOMER_ID FROM CUSTOMER WHERE USER_ID = ?
+        """, (session['user_id'],))
+        
+        customer_row = cursor.fetchone()
+        if not customer_row:
+            return jsonify({
+                'success': False,
+                'message': 'Không tìm thấy thông tin khách hàng'
+            }), 404
+        
+        customer_id = customer_row[0]
+        
+        # Build query
+        query = """
+            SELECT 
+                t.TICKET_ID, t.TICKET_CODE, t.QUANTITY, t.TOTAL_PRICE,
+                t.VALID_DATE, t.PURCHASE_DATE, t.STATUS, t.PAYMENT_METHOD,
+                tt.TYPE_NAME, tt.PRICE,
+                vh.CHECK_IN_TIME, vh.CHECK_OUT_TIME, vh.RATING, vh.FEEDBACK
+            FROM TICKET t
+            JOIN TICKET_TYPE tt ON t.TICKET_TYPE_ID = tt.TICKET_TYPE_ID
+            LEFT JOIN VISIT_HISTORY vh ON t.TICKET_ID = vh.TICKET_ID
+            WHERE t.CUSTOMER_ID = ?
+        """
+        params = [customer_id]
+        
+        if status_filter:
+            query += " AND t.STATUS = ?"
+            params.append(status_filter)
+        
+        # Count total
+        count_query = f"SELECT COUNT(*) FROM ({query}) AS subquery"
+        cursor.execute(count_query, params)
+        total = cursor.fetchone()[0]
+        
+        # Add pagination
+        query += " ORDER BY t.PURCHASE_DATE DESC LIMIT ? OFFSET ?"
+        params.extend([per_page, (page - 1) * per_page])
+        
+        cursor.execute(query, params)
+        
+        tickets = []
+        status_labels = {
+            'active': 'Hoạt động',
+            'checked_in': 'Check-in',
+            'checked_out': 'Check-out',
+            'completed': 'Hoàn thành',
+            'expired': 'Hết hạn',
+            'cancelled': 'Đã hủy'
+        }
+        
+        for row in cursor.fetchall():
+            status = row[6]
+            tickets.append({
+                'ticket_id': row[0],
+                'ticket_code': row[1],
+                'quantity': row[2],
+                'total_price': row[3],
+                'valid_date': row[4],
+                'purchase_date': row[5],
+                'status': status,
+                'status_label': status_labels.get(status, status),
+                'payment_method': row[7],
+                'ticket_type_name': row[8],
+                'unit_price': row[9],
+                'check_in_time': row[10],
+                'check_out_time': row[11],
+                'rating': row[12],
+                'feedback': row[13]
+            })
+        
+        db.close()
+        
+        return jsonify({
+            'success': True,
+            'data': tickets,
+            'pagination': {
+                'page': page,
+                'per_page': per_page,
+                'total': total,
+                'pages': (total + per_page - 1) // per_page
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Get customer tickets error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': f'Lỗi: {str(e)}'
+        }), 500
+
+
+@app.route('/api/customer/tickets/<int:ticket_id>', methods=['GET'])
+@login_required
+@permission_required('my_tickets')
+def api_get_customer_ticket_detail(ticket_id):
+    """Get detailed ticket information with QR code data"""
+    try:
+        db = get_db_connection()
+        cursor = db.cursor()
+        
+        # Get customer_id
+        cursor.execute("""
+            SELECT CUSTOMER_ID FROM CUSTOMER WHERE USER_ID = ?
+        """, (session['user_id'],))
+        
+        customer_row = cursor.fetchone()
+        if not customer_row:
+            return jsonify({
+                'success': False,
+                'message': 'Không tìm thấy thông tin khách hàng'
+            }), 404
+        
+        customer_id = customer_row[0]
+        
+        # Get ticket details
+        cursor.execute("""
+            SELECT 
+                t.TICKET_ID, t.TICKET_CODE, t.QUANTITY, t.TOTAL_PRICE,
+                t.VALID_DATE, t.PURCHASE_DATE, t.STATUS, t.PAYMENT_METHOD, t.NOTES,
+                tt.TYPE_NAME, tt.PRICE, tt.DESCRIPTION,
+                c.FULLNAME, c.PHONE, c.EMAIL,
+                vh.CHECK_IN_TIME, vh.CHECK_OUT_TIME, vh.DURATION_MINUTES,
+                vh.RATING, vh.FEEDBACK
+            FROM TICKET t
+            JOIN TICKET_TYPE tt ON t.TICKET_TYPE_ID = tt.TICKET_TYPE_ID
+            JOIN CUSTOMER c ON t.CUSTOMER_ID = c.CUSTOMER_ID
+            LEFT JOIN VISIT_HISTORY vh ON t.TICKET_ID = vh.TICKET_ID
+            WHERE t.TICKET_ID = ? AND t.CUSTOMER_ID = ?
+        """, (ticket_id, customer_id))
+        
+        row = cursor.fetchone()
+        db.close()
+        
+        if not row:
+            return jsonify({
+                'success': False,
+                'message': 'Không tìm thấy vé'
+            }), 404
+        
+        status = row[6]
+        status_labels = {
+            'active': 'Hoạt động',
+            'checked_in': 'Check-in',
+            'checked_out': 'Check-out',
+            'completed': 'Hoàn thành',
+            'expired': 'Hết hạn',
+            'cancelled': 'Đã hủy'
+        }
+        
+        ticket = {
+            'ticket_id': row[0],
+            'ticket_code': row[1],
+            'quantity': row[2],
+            'total_price': row[3],
+            'valid_date': row[4],
+            'purchase_date': row[5],
+            'status': status,
+            'status_label': status_labels.get(status, status),
+            'payment_method': row[7],
+            'notes': row[8],
+            'ticket_type': {
+                'name': row[9],
+                'price': row[10],
+                'description': row[11]
+            },
+            'customer': {
+                'fullname': row[12],
+                'phone': row[13],
+                'email': row[14]
+            },
+            'visit': {
+                'check_in_time': row[15],
+                'check_out_time': row[16],
+                'duration_minutes': row[17],
+                'rating': row[18],
+                'feedback': row[19]
+            },
+            'qr_data': f"TICKET-{row[1]}"
+        }
+        
+        return jsonify({
+            'success': True,
+            'data': ticket
+        })
+        
+    except Exception as e:
+        logger.error(f"Get ticket detail error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': f'Lỗi: {str(e)}'
+        }), 500
+
+
+# ==================== FALLBACK ROUTE ====================
+@app.route('/api/<path:path>', methods=['GET', 'POST', 'PUT', 'DELETE'])
+def api_fallback(path):
+    """Fallback for undefined API endpoints"""
+    return jsonify({
+        'success': False,
+        'message': 'Endpoint không tồn tại',
+        'timestamp': datetime.now().isoformat()
+    }), 404
+
+# ==================== BOOKING API ====================
+# ==================== ADD THESE TO app.py ====================
+# Place before "if __name__ == '__main__':"
+
+# ==================== BOOKING APIs ====================
+
+@app.route('/api/booking/ticket-types', methods=['GET'])
+def api_get_ticket_types():
+    """Get available ticket types"""
+    try:
+        db = get_db_connection()
+        cursor = db.cursor()
+        cursor.execute("SELECT TICKET_TYPE_ID, TYPE_NAME, PRICE, DESCRIPTION FROM TICKET_TYPE ORDER BY TICKET_TYPE_ID")
+        ticket_types = []
+        for row in cursor.fetchall():
+            ticket_types.append({
+                'ticket_type_id': row[0],
+                'type_name': row[1],
+                'price': row[2],
+                'description': row[3]
+            })
+        db.close()
+        return jsonify({'success': True, 'data': ticket_types})
+    except Exception as e:
+        logger.error(f"Get ticket types error: {str(e)}")
+        return jsonify({'success': False, 'message': f'Lỗi: {str(e)}'}), 500
+
+
+@app.route('/api/booking/create-order', methods=['POST'])
+def api_create_order():
+    """Create new order"""
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'message': 'Chưa đăng nhập'}), 401
+    
+    data = request.get_json()
+    ticket_type_id = data.get('ticket_type_id')
+    quantity = data.get('quantity', 1)
+    customer_note = data.get('customer_note', '')
+    
+    if not ticket_type_id or quantity < 1:
+        return jsonify({'success': False, 'message': 'Thông tin không hợp lệ'}), 400
+    
+    try:
+        db = get_db_connection()
+        cursor = db.cursor()
+        
+        # Get customer_id from user_id
+        cursor.execute("SELECT CUSTOMER_ID FROM CUSTOMER WHERE USER_ID = ?", (session['user_id'],))
+        customer_row = cursor.fetchone()
+        
+        if not customer_row:
+            db.close()
+            return jsonify({'success': False, 'message': 'Không tìm thấy thông tin khách hàng'}), 404
+        
+        customer_id = customer_row[0]
+        
+        # Get ticket type price
+        cursor.execute("SELECT PRICE, TYPE_NAME FROM TICKET_TYPE WHERE TICKET_TYPE_ID = ?", (ticket_type_id,))
+        ticket_row = cursor.fetchone()
+        
+        if not ticket_row:
+            db.close()
+            return jsonify({'success': False, 'message': 'Loại vé không tồn tại'}), 404
+        
+        unit_price = ticket_row[0]
+        type_name = ticket_row[1]
+        total_price = unit_price * quantity
+        
+        # Calculate expiry (24 hours)
+        expires_at = (datetime.now() + timedelta(hours=24)).strftime('%Y-%m-%d %H:%M:%S')
+        
+        # Create order
+        cursor.execute("""
+            INSERT INTO "ORDER" (
+                CUSTOMER_ID, TICKET_TYPE_ID, QUANTITY, 
+                UNIT_PRICE, TOTAL_PRICE, STATUS,
+                CUSTOMER_NOTE, EXPIRES_AT
+            ) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)
+        """, (customer_id, ticket_type_id, quantity, unit_price, total_price, customer_note, expires_at))
+        
+        order_id = cursor.lastrowid
+        
+        # Get generated ORDER_CODE
+        cursor.execute("SELECT ORDER_CODE, PAYMENT_REFERENCE FROM \"ORDER\" WHERE ORDER_ID = ?", (order_id,))
+        order_row = cursor.fetchone()
+        order_code = order_row[0]
+        payment_reference = order_row[1]
+        
+        db.commit()
+        db.close()
+        
+        logger.info(f"Order created: {order_code} by customer {customer_id}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Tạo đơn hàng thành công',
+            'data': {
+                'order_id': order_id,
+                'order_code': order_code,
+                'ticket_type': type_name,
+                'quantity': quantity,
+                'unit_price': unit_price,
+                'total_price': total_price,
+                'payment_reference': payment_reference,
+                'bank_info': {
+                    'bank_name': 'ACB',
+                    'account_number': '018812398',
+                    'account_name': 'Bảo Tàng Bến Nhà Rồng',
+                    'content': payment_reference
+                },
+                'expires_at': expires_at
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Create order error: {str(e)}")
+        return jsonify({'success': False, 'message': f'Lỗi: {str(e)}'}), 500
+
+
+@app.route('/api/booking/my-orders', methods=['GET'])
+def api_get_my_orders():
+    """Get customer's orders"""
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'message': 'Chưa đăng nhập'}), 401
+    
+    status_filter = request.args.get('status', '')
+    
+    try:
+        db = get_db_connection()
+        cursor = db.cursor()
+        
+        # Get customer_id
+        cursor.execute("SELECT CUSTOMER_ID FROM CUSTOMER WHERE USER_ID = ?", (session['user_id'],))
+        customer_row = cursor.fetchone()
+        
+        if not customer_row:
+            db.close()
+            return jsonify({'success': False, 'message': 'Không tìm thấy thông tin khách hàng'}), 404
+        
+        customer_id = customer_row[0]
+        
+        # Build query
+        query = """
+            SELECT 
+                o.ORDER_ID, o.ORDER_CODE, o.STATUS, o.QUANTITY,
+                o.TOTAL_PRICE, o.CREATED_AT, o.PAID_AT, o.PAYMENT_PROOF_PATH,
+                tt.TYPE_NAME, tt.PRICE,
+                CASE o.STATUS
+                    WHEN 'pending' THEN 'Chờ thanh toán'
+                    WHEN 'waiting_confirmation' THEN 'Chờ xác nhận'
+                    WHEN 'paid' THEN 'Đã thanh toán'
+                    WHEN 'cancelled' THEN 'Đã hủy'
+                    WHEN 'rejected' THEN 'Bị từ chối'
+                END as STATUS_LABEL,
+                o.REJECTION_REASON, o.PAYMENT_REFERENCE
+            FROM "ORDER" o
+            JOIN TICKET_TYPE tt ON o.TICKET_TYPE_ID = tt.TICKET_TYPE_ID
+            WHERE o.CUSTOMER_ID = ?
+        """
+        params = [customer_id]
+        
+        if status_filter:
+            query += " AND o.STATUS = ?"
+            params.append(status_filter)
+        
+        query += " ORDER BY o.CREATED_AT DESC"
+        
+        cursor.execute(query, params)
+        
+        orders = []
+        for row in cursor.fetchall():
+            orders.append({
+                'order_id': row[0],
+                'order_code': row[1],
+                'status': row[2],
+                'quantity': row[3],
+                'total_price': row[4],
+                'created_at': row[5],
+                'paid_at': row[6],
+                'has_proof': bool(row[7]),
+                'ticket_type': row[8],
+                'unit_price': row[9],
+                'status_label': row[10],
+                'rejection_reason': row[11],
+                'payment_reference': row[12]
+            })
+        
+        db.close()
+        
+        return jsonify({'success': True, 'data': orders})
+        
+    except Exception as e:
+        logger.error(f"Get my orders error: {str(e)}")
+        return jsonify({'success': False, 'message': f'Lỗi: {str(e)}'}), 500
+
+
+@app.route('/api/booking/upload-proof/<int:order_id>', methods=['POST'])
+def api_upload_payment_proof(order_id):
+    """Upload payment proof"""
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'message': 'Chưa đăng nhập'}), 401
+    
+    if 'file' not in request.files:
+        return jsonify({'success': False, 'message': 'Không có file được upload'}), 400
+    
+    file = request.files['file']
+    
+    if file.filename == '':
+        return jsonify({'success': False, 'message': 'Không có file được chọn'}), 400
+    
+    if not allowed_file_payment(file.filename):
+        return jsonify({'success': False, 'message': 'Chỉ chấp nhận file ảnh (PNG, JPG, JPEG, GIF)'}), 400
+    
+    try:
+        db = get_db_connection()
+        cursor = db.cursor()
+        
+        # Get customer_id
+        cursor.execute("SELECT CUSTOMER_ID FROM CUSTOMER WHERE USER_ID = ?", (session['user_id'],))
+        customer_row = cursor.fetchone()
+        
+        if not customer_row:
+            db.close()
+            return jsonify({'success': False, 'message': 'Không tìm thấy thông tin khách hàng'}), 404
+        
+        customer_id = customer_row[0]
+        
+        # Verify order belongs to customer
+        cursor.execute("SELECT STATUS, ORDER_CODE FROM \"ORDER\" WHERE ORDER_ID = ? AND CUSTOMER_ID = ?", 
+                      (order_id, customer_id))
+        order_row = cursor.fetchone()
+        
+        if not order_row:
+            db.close()
+            return jsonify({'success': False, 'message': 'Không tìm thấy đơn hàng'}), 404
+        
+        status = order_row[0]
+        
+        if status not in ['pending', 'waiting_confirmation']:
+            db.close()
+            return jsonify({'success': False, 'message': f'Không thể upload cho đơn hàng có trạng thái: {status}'}), 400
+        
+        # Save file
+        filename = secure_filename(file.filename)
+        file_ext = filename.rsplit('.', 1)[1].lower()
+        new_filename = f"order_{order_id}_{datetime.now().strftime('%Y%m%d%H%M%S')}.{file_ext}"
+        file_path = os.path.join(UPLOAD_FOLDER_PAYMENTS, new_filename)
+        
+        file.save(file_path)
+        
+        # Get transaction ref from form
+        transaction_ref = request.form.get('transaction_ref', '')
+        
+        # Update order
+        cursor.execute("""
+            UPDATE "ORDER"
+            SET STATUS = 'waiting_confirmation',
+                PAYMENT_PROOF_PATH = ?,
+                TRANSACTION_REF = ?,
+                UPDATED_AT = CURRENT_TIMESTAMP
+            WHERE ORDER_ID = ?
+        """, (file_path, transaction_ref, order_id))
+        
+        db.commit()
+        db.close()
+        
+        logger.info(f"Payment proof uploaded for order {order_id}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Upload minh chứng thành công. Đơn hàng đang chờ xác nhận.'
+        })
+        
+    except Exception as e:
+        logger.error(f"Upload proof error: {str(e)}")
+        return jsonify({'success': False, 'message': f'Lỗi: {str(e)}'}), 500
+
+
+# Add this to app.py after the upload-proof endpoint
+
+@app.route('/api/booking/cancel-order/<int:order_id>', methods=['POST'])
+def api_cancel_order(order_id):
+    """Cancel order"""
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'message': 'Chưa đăng nhập'}), 401
+
+    try:
+        db = get_db_connection()
+        cursor = db.cursor()
+
+        # Get customer_id
+        cursor.execute("SELECT CUSTOMER_ID FROM CUSTOMER WHERE USER_ID = ?", (session['user_id'],))
+        customer_row = cursor.fetchone()
+
+        if not customer_row:
+            db.close()
+            return jsonify({'success': False, 'message': 'Không tìm thấy thông tin khách hàng'}), 404
+
+        customer_id = customer_row[0]
+
+        # Verify order belongs to customer and check status
+        cursor.execute("SELECT STATUS FROM \"ORDER\" WHERE ORDER_ID = ? AND CUSTOMER_ID = ?",
+                      (order_id, customer_id))
+        order_row = cursor.fetchone()
+
+        if not order_row:
+            db.close()
+            return jsonify({'success': False, 'message': 'Không tìm thấy đơn hàng'}), 404
+
+        status = order_row[0]
+
+        # Only allow cancelling pending or waiting_confirmation orders
+        if status not in ['pending', 'waiting_confirmation']:
+            db.close()
+            return jsonify({'success': False, 'message': f'Không thể hủy đơn hàng có trạng thái: {status}'}), 400
+
+        # Update order status to cancelled
+        cursor.execute("""
+            UPDATE "ORDER"
+            SET STATUS = 'cancelled',
+                UPDATED_AT = CURRENT_TIMESTAMP
+            WHERE ORDER_ID = ?
+        """, (order_id,))
+
+        db.commit()
+        db.close()
+
+        logger.info(f"Order {order_id} cancelled by customer {customer_id}")
+
+        return jsonify({
+            'success': True,
+            'message': 'Đã hủy đơn hàng thành công'
+        })
+
+    except Exception as e:
+        logger.error(f"Cancel order error: {str(e)}")
+        return jsonify({'success': False, 'message': f'Lỗi: {str(e)}'}), 500
+
+
+@app.route('/api/statistics', methods=['GET'])
+@login_required
+def api_get_statistics():
+    """Get dashboard statistics"""
+    try:
+        db = get_db_connection()
+        cursor = db.cursor()
+        
+        # Total tickets sold
+        cursor.execute("SELECT COUNT(*) FROM TICKET WHERE STATUS = 'valid'")
+        total_tickets = cursor.fetchone()[0]
+        
+        # Total revenue
+        cursor.execute("SELECT SUM(TOTAL_PRICE) FROM TICKET WHERE STATUS = 'valid'")
+        revenue_result = cursor.fetchone()
+        total_revenue = revenue_result[0] if revenue_result[0] else 0
+        
+        # Total customers
+        cursor.execute("SELECT COUNT(DISTINCT CUSTOMER_ID) FROM CUSTOMER")
+        total_customers = cursor.fetchone()[0]
+        
+        # Total visits
+        cursor.execute("SELECT COUNT(*) FROM VISIT_HISTORY")
+        total_visits = cursor.fetchone()[0]
+        
+        # Recent tickets (last 7 days)
+        cursor.execute("""
+            SELECT COUNT(*) FROM TICKET 
+            WHERE DATE(CREATED_AT) >= DATE('now', '-7 days')
+        """)
+        recent_tickets = cursor.fetchone()[0]
+        
+        # Pending orders
+        cursor.execute("SELECT COUNT(*) FROM \"ORDER\" WHERE STATUS = 'pending'")
+        pending_orders = cursor.fetchone()[0]
+        
+        # Waiting confirmation orders
+        cursor.execute("SELECT COUNT(*) FROM \"ORDER\" WHERE STATUS = 'waiting_confirmation'")
+        waiting_orders = cursor.fetchone()[0]
+        
+        db.close()
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'total_tickets': total_tickets,
+                'total_revenue': total_revenue,
+                'total_customers': total_customers,
+                'total_visits': total_visits,
+                'recent_tickets': recent_tickets,
+                'pending_orders': pending_orders,
+                'waiting_orders': waiting_orders
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Get statistics error: {str(e)}")
+        return jsonify({'success': False, 'message': f'Lỗi: {str(e)}'}), 500    
+
+# Add these missing endpoints to app.py
+
+# 1. Auth Verify Endpoint
+@app.route('/api/auth/verify', methods=['GET'])
+def api_auth_verify():
+    """Verify if user is logged in and has valid session"""
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'logged_in': False}), 401
+    
+    try:
+        db = get_db_connection()
+        cursor = db.cursor()
+        
+        # Get user info
+        cursor.execute("""
+            SELECT u.USER_ID, u.USERNAME, u.EMAIL, u.FULLNAME, u.PHONE, u.USER_TYPE
+            FROM USER u
+            WHERE u.USER_ID = ? AND u.IS_ACTIVE = 1
+        """, (session['user_id'],))
+        
+        user = cursor.fetchone()
+        
+        if not user:
+            db.close()
+            session.clear()
+            return jsonify({'success': False, 'logged_in': False}), 401
+        
+        # Get role
+        cursor.execute("""
+            SELECT r.ROLE_NAME, r.PERMISSIONS
+            FROM USER_ROLE ur
+            JOIN ROLE r ON ur.ROLE_ID = r.ROLE_ID
+            WHERE ur.USER_ID = ?
+        """, (session['user_id'],))
+        
+        role_row = cursor.fetchone()
+        role_name = role_row[0] if role_row else None
+        permissions = role_row[1].split(',') if role_row and role_row[1] else []
+        
+        db.close()
+        
+        return jsonify({
+            'success': True,
+            'logged_in': True,
+            'data': {
+                'user_id': user[0],
+                'username': user[1],
+                'email': user[2],
+                'fullname': user[3],
+                'phone': user[4],
+                'user_type': user[5],
+                'role': role_name,
+                'permissions': permissions
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Auth verify error: {str(e)}")
+        return jsonify({'success': False, 'message': f'Lỗi: {str(e)}'}), 500
+
+
+# 2. Ticket Types Endpoint (for admin)
+@app.route('/api/ticket-types', methods=['GET'])
+def api_get_all_ticket_types():
+    """Get all ticket types (admin version)"""
+    try:
+        db = get_db_connection()
+        cursor = db.cursor()
+        
+        cursor.execute("""
+            SELECT TICKET_TYPE_ID, TYPE_NAME, PRICE, DESCRIPTION, IS_ACTIVE, CREATED_AT
+            FROM TICKET_TYPE
+            ORDER BY TICKET_TYPE_ID
+        """)
+        
+        ticket_types = []
+        for row in cursor.fetchall():
+            ticket_types.append({
+                'ticket_type_id': row[0],
+                'type_name': row[1],
+                'price': row[2],
+                'description': row[3],
+                'is_active': row[4],
+                'created_at': row[5]
+            })
+        
+        db.close()
+        
+        return jsonify({'success': True, 'data': ticket_types})
+        
+    except Exception as e:
+        logger.error(f"Get ticket types error: {str(e)}")
+        return jsonify({'success': False, 'message': f'Lỗi: {str(e)}'}), 500
+
+# ==========================================
+# COMPLETE ADMIN APIs
+# Add ALL of these to app.py
+# ==========================================
+
+# ========== TICKETS API ==========
+
+@app.route('/api/tickets', methods=['GET'])
+@login_required
+def api_get_tickets():
+    """Get tickets with filters"""
+    try:
+        status_filter = request.args.get('status', '')
+        limit = request.args.get('limit', 100)
+        
+        db = get_db_connection()
+        cursor = db.cursor()
+        
+        query = """
+            SELECT 
+                t.TICKET_ID, t.TICKET_CODE, t.STATUS, t.QUANTITY, t.TOTAL_PRICE,
+                t.PURCHASE_DATE, t.VALID_DATE,
+                tt.TYPE_NAME,
+                c.FULLNAME as CUSTOMER_NAME, c.PHONE as CUSTOMER_PHONE
+            FROM TICKET t
+            JOIN TICKET_TYPE tt ON t.TICKET_TYPE_ID = tt.TICKET_TYPE_ID
+            LEFT JOIN CUSTOMER c ON t.CUSTOMER_ID = c.CUSTOMER_ID
+        """
+        
+        params = []
+        if status_filter:
+            query += " WHERE t.STATUS = ?"
+            params.append(status_filter)
+        
+        query += " ORDER BY t.CREATED_AT DESC LIMIT ?"
+        params.append(limit)
+        
+        cursor.execute(query, params)
+        
+        tickets = []
+        for row in cursor.fetchall():
+            tickets.append({
+                'ticket_id': row[0],
+                'ticket_code': row[1],
+                'status': row[2],
+                'quantity': row[3],
+                'total_price': row[4],
+                'purchase_date': row[5],
+                'valid_date': row[6],
+                'ticket_type': row[7],
+                'customer_name': row[8],
+                'customer_phone': row[9]
+            })
+        
+        db.close()
+        
+        return jsonify({'success': True, 'data': tickets})
+        
+    except Exception as e:
+        logger.error(f"Get tickets error: {str(e)}")
+        return jsonify({'success': False, 'message': f'Lỗi: {str(e)}'}), 500
+
+
+# ========== CUSTOMERS API ==========
+
+@app.route('/api/customers', methods=['GET'])
+@login_required
+def api_get_customers():
+    """Get customers list"""
+    try:
+        limit = request.args.get('limit', 100)
+        search = request.args.get('search', '')
+        
+        db = get_db_connection()
+        cursor = db.cursor()
+        
+        query = """
+            SELECT 
+                c.CUSTOMER_ID, c.FULLNAME, c.PHONE, c.EMAIL,
+                c.ID_NUMBER, c.NATIONALITY, c.CREATED_AT,
+                COUNT(DISTINCT t.TICKET_ID) as TICKET_COUNT
+            FROM CUSTOMER c
+            LEFT JOIN TICKET t ON c.CUSTOMER_ID = t.CUSTOMER_ID
+        """
+        
+        params = []
+        if search:
+            query += " WHERE c.FULLNAME LIKE ? OR c.PHONE LIKE ? OR c.EMAIL LIKE ?"
+            search_param = f"%{search}%"
+            params.extend([search_param, search_param, search_param])
+        
+        query += " GROUP BY c.CUSTOMER_ID ORDER BY c.CREATED_AT DESC LIMIT ?"
+        params.append(limit)
+        
+        cursor.execute(query, params)
+        
+        customers = []
+        for row in cursor.fetchall():
+            customers.append({
+                'customer_id': row[0],
+                'fullname': row[1],
+                'phone': row[2],
+                'email': row[3],
+                'id_number': row[4],
+                'nationality': row[5],
+                'created_at': row[6],
+                'ticket_count': row[7]
+            })
+        
+        db.close()
+        
+        return jsonify({'success': True, 'data': customers})
+        
+    except Exception as e:
+        logger.error(f"Get customers error: {str(e)}")
+        return jsonify({'success': False, 'message': f'Lỗi: {str(e)}'}), 500
+
+
+# ========== VISITS API ==========
+
+@app.route('/api/visits/active', methods=['GET'])
+@login_required
+def api_get_active_visits():
+    """Get currently active visits (checked in but not checked out)"""
+    try:
+        db = get_db_connection()
+        cursor = db.cursor()
+        
+        cursor.execute("""
+            SELECT 
+                vh.HISTORY_ID, vh.CHECK_IN_TIME,
+                c.FULLNAME as CUSTOMER_NAME, c.PHONE as CUSTOMER_PHONE,
+                t.TICKET_CODE,
+                u.FULLNAME as GUIDE_NAME
+            FROM VISIT_HISTORY vh
+            JOIN CUSTOMER c ON vh.CUSTOMER_ID = c.CUSTOMER_ID
+            LEFT JOIN TICKET t ON vh.TICKET_ID = t.TICKET_ID
+            LEFT JOIN USER u ON vh.GUIDE_ID = u.USER_ID
+            WHERE vh.CHECK_OUT_TIME IS NULL
+            ORDER BY vh.CHECK_IN_TIME DESC
+            LIMIT 50
+        """)
+        
+        visits = []
+        for row in cursor.fetchall():
+            visits.append({
+                'history_id': row[0],
+                'check_in_time': row[1],
+                'customer_name': row[2],
+                'customer_phone': row[3],
+                'ticket_code': row[4],
+                'guide_name': row[5]
+            })
+        
+        db.close()
+        
+        return jsonify({'success': True, 'data': visits})
+        
+    except Exception as e:
+        logger.error(f"Get active visits error: {str(e)}")
+        return jsonify({'success': False, 'message': f'Lỗi: {str(e)}'}), 500
+
+
+@app.route('/api/visit-history', methods=['GET'])
+@login_required
+def api_get_visit_history():
+    """Get visit history with filters"""
+    try:
+        limit = request.args.get('limit', 50)
+        
+        db = get_db_connection()
+        cursor = db.cursor()
+        
+        cursor.execute("""
+            SELECT 
+                vh.HISTORY_ID, vh.CHECK_IN_TIME, vh.CHECK_OUT_TIME,
+                vh.DURATION_MINUTES, vh.RATING, vh.FEEDBACK,
+                c.FULLNAME as CUSTOMER_NAME, c.PHONE as CUSTOMER_PHONE,
+                t.TICKET_CODE,
+                u.FULLNAME as GUIDE_NAME
+            FROM VISIT_HISTORY vh
+            JOIN CUSTOMER c ON vh.CUSTOMER_ID = c.CUSTOMER_ID
+            LEFT JOIN TICKET t ON vh.TICKET_ID = t.TICKET_ID
+            LEFT JOIN USER u ON vh.GUIDE_ID = u.USER_ID
+            ORDER BY vh.CHECK_IN_TIME DESC
+            LIMIT ?
+        """, (limit,))
+        
+        history = []
+        for row in cursor.fetchall():
+            history.append({
+                'history_id': row[0],
+                'check_in_time': row[1],
+                'check_out_time': row[2],
+                'duration_minutes': row[3],
+                'rating': row[4],
+                'feedback': row[5],
+                'customer_name': row[6],
+                'customer_phone': row[7],
+                'ticket_code': row[8],
+                'guide_name': row[9]
+            })
+        
+        db.close()
+        
+        return jsonify({'success': True, 'data': history})
+        
+    except Exception as e:
+        logger.error(f"Get visit history error: {str(e)}")
+        return jsonify({'success': False, 'message': f'Lỗi: {str(e)}'}), 500
+
+
+# ==================== RUN APP ====================
+if __name__ == '__main__':
+    logger.info("Starting Museum Backend Server...")
+    logger.info("Server: http://0.0.0.0:5000")
+    app.run(host='0.0.0.0', port=5000, debug=True)

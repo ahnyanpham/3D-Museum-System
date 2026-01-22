@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Đơn Hàng Của Tôi - Bảo Tàng Bến Nhà Rồng</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+        }
+
+        /* Navigation */
+        nav {
+            background: white;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 1rem 2rem;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .nav-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 1.3rem;
+            font-weight: bold;
+            color: #c41e3a;
+            text-decoration: none;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 2rem;
+            align-items: center;
+        }
+
+        .nav-links a {
+            text-decoration: none;
+            color: #333;
+            font-weight: 500;
+            transition: color 0.3s;
+        }
+
+        .nav-links a:hover {
+            color: #c41e3a;
+        }
+
+        /* Container */
+        .container {
+            max-width: 1200px;
+            margin: 2rem auto;
+            padding: 0 2rem;
+        }
+
+        /* Page Header */
+        .page-header {
+            background: white;
+            border-radius: 15px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+
+        .page-header h1 {
+            color: #c41e3a;
+            margin-bottom: 0.5rem;
+        }
+
+        /* Filter Tabs */
+        .filter-tabs {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+        }
+
+        .filter-tab {
+            padding: 0.75rem 1.5rem;
+            background: white;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+
+        .filter-tab:hover {
+            border-color: #c41e3a;
+            color: #c41e3a;
+        }
+
+        .filter-tab.active {
+            background: linear-gradient(135deg, #c41e3a, #ff6b6b);
+            color: white;
+            border-color: #c41e3a;
+        }
+
+        /* Orders List */
+        .orders-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .order-card {
+            background: white;
+            border-radius: 15px;
+            padding: 2rem;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            transition: all 0.3s;
+        }
+
+        .order-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+        }
+
+        .order-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            padding-bottom: 1rem;
+            border-bottom: 2px solid #f0f0f0;
+        }
+
+        .order-code {
+            font-size: 1.3rem;
+            font-weight: bold;
+            color: #c41e3a;
+        }
+
+        .order-status {
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        .status-pending {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .status-waiting_confirmation {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+
+        .status-paid {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-cancelled, .status-rejected {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .order-details {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .detail-item {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+
+        .detail-label {
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        .detail-value {
+            color: #333;
+            font-weight: 600;
+        }
+
+        .order-actions {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #c41e3a, #ff6b6b);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: scale(1.05);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Upload Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.7);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 15px;
+            padding: 2rem;
+            max-width: 500px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .modal-title {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #c41e3a;
+        }
+
+        .close-modal {
+            font-size: 2rem;
+            color: #999;
+            cursor: pointer;
+            border: none;
+            background: none;
+        }
+
+        .close-modal:hover {
+            color: #333;
+        }
+
+        .upload-area {
+            border: 2px dashed #c41e3a;
+            border-radius: 10px;
+            padding: 2rem;
+            text-align: center;
+            margin-bottom: 1.5rem;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .upload-area:hover {
+            background: #fff5f5;
+        }
+
+        .upload-area.dragover {
+            background: #ffe0e0;
+            border-color: #ff6b6b;
+        }
+
+        .preview-image {
+            max-width: 100%;
+            max-height: 300px;
+            margin-top: 1rem;
+            border-radius: 10px;
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 0.75rem;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 1rem;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: #c41e3a;
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 4rem 2rem;
+            background: white;
+            border-radius: 15px;
+        }
+
+        .empty-state-icon {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+        }
+
+        /* Alert */
+        .alert {
+            padding: 1rem;
+            border-radius: 10px;
+            margin-bottom: 1rem;
+        }
+
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .alert-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .alert-warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeeba;
+        }
+
+        /* Loading */
+        .loading {
+            text-align: center;
+            padding: 3rem;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #c41e3a;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .order-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 1rem;
+            }
+
+            .order-details {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav>
+        <div class="nav-container">
+            <a href="/" class="logo">Bảo Tàng Bến Nhà Rồng</a>
+            <div class="nav-links">
+                <a href="/">Trang Chủ</a>
+                <a href="/booking.html">Đặt Vé</a>
+                <a href="/tickets.html">Vé Của Tôi</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Container -->
+    <div class="container">
+        <!-- Page Header -->
+        <div class="page-header">
+            <h1>Đơn Hàng Của Tôi</h1>
+            <p>Quản lý và theo dõi các đơn hàng đã đặt</p>
+        </div>
+
+        <!-- Alert -->
+        <div id="alertContainer"></div>
+
+        <!-- Filter Tabs -->
+        <div class="filter-tabs">
+            <div class="filter-tab active" data-status="">Tất cả</div>
+            <div class="filter-tab" data-status="pending">Chờ thanh toán</div>
+            <div class="filter-tab" data-status="waiting_confirmation">Chờ xác nhận</div>
+            <div class="filter-tab" data-status="paid">Đã thanh toán</div>
+            <div class="filter-tab" data-status="cancelled">Đã hủy</div>
+            <div class="filter-tab" data-status="rejected">Bị từ chối</div>
+        </div>
+
+        <!-- Loading -->
+        <div id="loadingIndicator" class="loading" style="display: none;">
+            <div class="spinner"></div>
+            <p>Đang tải...</p>
+        </div>
+
+        <!-- Orders List -->
+        <div id="ordersList" class="orders-list">
+            <!-- Orders will be rendered here -->
+        </div>
+
+        <!-- Empty State -->
+        <div id="emptyState" class="empty-state" style="display: none;">
+            <div class="empty-state-icon">📦</div>
+            <h2>Chưa có đơn hàng nào</h2>
+            <p style="color: #666; margin-top: 1rem;">Hãy đặt vé để bắt đầu!</p>
+            <a href="/booking.html" class="btn btn-primary" style="margin-top: 2rem;">Đặt Vé Ngay</a>
+        </div>
+    </div>
+
+    <!-- Upload Modal -->
+    <div id="uploadModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Upload Minh Chứng Thanh Toán</h3>
+                <button class="close-modal" onclick="closeUploadModal()">&times;</button>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Mã đơn hàng:</label>
+                <div id="modalOrderCode" style="font-weight: bold; color: #c41e3a; font-size: 1.1rem;"></div>
+            </div>
+
+            <div class="upload-area" id="uploadArea">
+                <p style="margin-bottom: 1rem;">📸 Click hoặc kéo ảnh vào đây</p>
+                <p style="color: #666; font-size: 0.9rem;">Chấp nhận: JPG, PNG, GIF (tối đa 5MB)</p>
+                <input type="file" id="fileInput" accept="image/*" style="display: none;">
+                <img id="previewImage" class="preview-image" style="display: none;">
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Mã giao dịch (tùy chọn):</label>
+                <input type="text" id="transactionRef" class="form-input" placeholder="Nhập mã GD nếu có">
+            </div>
+
+            <div style="display: flex; gap: 1rem;">
+                <button class="btn btn-secondary" onclick="closeUploadModal()" style="flex: 1;">Hủy</button>
+                <button class="btn btn-primary" id="uploadBtn" onclick="uploadProof()" style="flex: 1;">Upload</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = '/api';
+        let orders = [];
+        let currentFilter = '';
+        let selectedOrderId = null;
+        let selectedFile = null;
+
+        // Load orders
+        async function loadOrders(status = '') {
+            try {
+                document.getElementById('loadingIndicator').style.display = 'block';
+                document.getElementById('ordersList').innerHTML = '';
+                document.getElementById('emptyState').style.display = 'none';
+
+                const url = status ? `${API_URL}/booking/my-orders?status=${status}` : `${API_URL}/booking/my-orders`;
+                const response = await fetch(url);
+                const data = await response.json();
+
+                if (!data.success) {
+                    throw new Error(data.message || 'Không thể tải đơn hàng');
+                }
+
+                orders = data.data;
+                renderOrders();
+
+            } catch (error) {
+                console.error('Load orders error:', error);
+                showAlert('error', error.message || 'Lỗi khi tải đơn hàng');
+            } finally {
+                document.getElementById('loadingIndicator').style.display = 'none';
+            }
+        }
+
+        // Render orders
+        function renderOrders() {
+            const container = document.getElementById('ordersList');
+            const emptyState = document.getElementById('emptyState');
+
+            if (orders.length === 0) {
+                container.innerHTML = '';
+                emptyState.style.display = 'block';
+                return;
+            }
+
+            emptyState.style.display = 'none';
+
+            container.innerHTML = orders.map(order => `
+                <div class="order-card">
+                    <div class="order-header">
+                        <div class="order-code">${order.order_code}</div>
+                        <div class="order-status status-${order.status}">${order.status_label}</div>
+                    </div>
+
+                    <div class="order-details">
+                        <div class="detail-item">
+                            <div class="detail-label">Loại vé</div>
+                            <div class="detail-value">${order.ticket_type}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Số lượng</div>
+                            <div class="detail-value">${order.quantity}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Tổng tiền</div>
+                            <div class="detail-value">${formatPrice(order.total_price)} VND</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Ngày tạo</div>
+                            <div class="detail-value">${formatDate(order.created_at)}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Nội dung CK</div>
+                            <div class="detail-value" style="color: #c41e3a;">${order.payment_reference}</div>
+                        </div>
+                    </div>
+
+                    ${order.rejection_reason ? `
+                        <div class="alert alert-error">
+                            <strong>Lý do từ chối:</strong> ${order.rejection_reason}
+                        </div>
+                    ` : ''}
+
+                    <div class="order-actions">
+                        ${order.status === 'pending' ? `
+                            <button class="btn btn-primary" onclick="openUploadModal(${order.order_id}, '${order.order_code}')">
+                                Upload Minh Chứng
+                            </button>
+                            <button class="btn btn-danger" onclick="cancelOrder(${order.order_id})">
+                                Hủy Đơn
+                            </button>
+                        ` : ''}
+                        
+                        ${order.status === 'waiting_confirmation' ? `
+                            <div class="alert alert-warning" style="flex: 1;">
+                                Đã upload minh chứng. Đang chờ admin xác nhận...
+                            </div>
+                        ` : ''}
+                        
+                        ${order.status === 'paid' ? `
+                            <a href="/tickets.html" class="btn btn-primary">
+                                Xem Vé
+                            </a>
+                        ` : ''}
+
+                        ${order.status === 'rejected' ? `
+                            <button class="btn btn-primary" onclick="openUploadModal(${order.order_id}, '${order.order_code}')">
+                                Upload Lại
+                            </button>
+                        ` : ''}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Filter tabs
+        document.querySelectorAll('.filter-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                currentFilter = tab.dataset.status;
+                loadOrders(currentFilter);
+            });
+        });
+
+        // Open upload modal
+        function openUploadModal(orderId, orderCode) {
+            selectedOrderId = orderId;
+            selectedFile = null;
+            document.getElementById('modalOrderCode').textContent = orderCode;
+            document.getElementById('previewImage').style.display = 'none';
+            document.getElementById('transactionRef').value = '';
+            document.getElementById('uploadModal').classList.add('active');
+        }
+
+        // Close upload modal
+        function closeUploadModal() {
+            document.getElementById('uploadModal').classList.remove('active');
+        }
+
+        // File upload handling
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const previewImage = document.getElementById('previewImage');
+
+        uploadArea.addEventListener('click', () => fileInput.click());
+
+        fileInput.addEventListener('change', (e) => {
+            handleFile(e.target.files[0]);
+        });
+
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            handleFile(e.dataTransfer.files[0]);
+        });
+
+        function handleFile(file) {
+            if (!file) return;
+
+            if (!file.type.startsWith('image/')) {
+                showAlert('error', 'Chỉ chấp nhận file ảnh!');
+                return;
+            }
+
+            if (file.size > 5 * 1024 * 1024) {
+                showAlert('error', 'File quá lớn! Tối đa 5MB');
+                return;
+            }
+
+            selectedFile = file;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                previewImage.src = e.target.result;
+                previewImage.style.display = 'block';
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // Upload proof
+        async function uploadProof() {
+            if (!selectedFile) {
+                showAlert('error', 'Vui lòng chọn file ảnh!');
+                return;
+            }
+
+            try {
+                const uploadBtn = document.getElementById('uploadBtn');
+                uploadBtn.disabled = true;
+                uploadBtn.textContent = 'Đang upload...';
+
+                const formData = new FormData();
+                formData.append('file', selectedFile);
+                formData.append('transaction_ref', document.getElementById('transactionRef').value);
+
+                const response = await fetch(`${API_URL}/booking/upload-proof/${selectedOrderId}`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (!data.success) {
+                    throw new Error(data.message || 'Upload thất bại');
+                }
+
+                showAlert('success', 'Upload minh chứng thành công! Đơn hàng đang chờ xác nhận.');
+                closeUploadModal();
+                loadOrders(currentFilter);
+
+            } catch (error) {
+                console.error('Upload error:', error);
+                showAlert('error', error.message || 'Lỗi khi upload');
+            } finally {
+                const uploadBtn = document.getElementById('uploadBtn');
+                uploadBtn.disabled = false;
+                uploadBtn.textContent = 'Upload';
+            }
+        }
+
+        // Cancel order
+        async function cancelOrder(orderId) {
+            if (!confirm('Bạn có chắc muốn hủy đơn hàng này?')) return;
+
+            try {
+                const response = await fetch(`${API_URL}/booking/cancel-order/${orderId}`, {
+                    method: 'POST'
+                });
+
+                const data = await response.json();
+
+                if (!data.success) {
+                    throw new Error(data.message || 'Hủy đơn thất bại');
+                }
+
+                showAlert('success', 'Đã hủy đơn hàng');
+                loadOrders(currentFilter);
+
+            } catch (error) {
+                console.error('Cancel error:', error);
+                showAlert('error', error.message || 'Lỗi khi hủy đơn');
+            }
+        }
+
+        // Format price
+        function formatPrice(price) {
+            return new Intl.NumberFormat('vi-VN').format(price);
+        }
+
+        // Format date
+        function formatDate(dateStr) {
+            const date = new Date(dateStr);
+            return date.toLocaleString('vi-VN');
+        }
+
+        // Show alert
+        function showAlert(type, message) {
+            const container = document.getElementById('alertContainer');
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert alert-${type}`;
+            alertDiv.textContent = message;
+            container.appendChild(alertDiv);
+
+            setTimeout(() => {
+                alertDiv.remove();
+            }, 5000);
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            loadOrders();
+        });
+    </script>
+</body>
+</html>

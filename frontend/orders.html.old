@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quản Lý Đơn Hàng - Bảo Tàng Hồ Chí Minh</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script>
+    function toggleSidebar() {
+        const sidebar = document.getElementById('sidebar');
+        const overlay = document.getElementById('sidebarOverlay');
+        const hamburger = document.getElementById('hamburgerBtn');
+        
+        if (sidebar && overlay && hamburger) {
+            sidebar.classList.toggle('open');
+            overlay.classList.toggle('active');
+            hamburger.classList.toggle('active');
+        }
+    }
+    </script>
+</head>
+<body>
+    <div class="app-container">
+        <header class="header">
+            <h1>Bảo Tàng Hồ Chí Minh</h1>
+            <p>Hệ Thống Quản Lý Tham Quan</p>
+        </header>
+
+        <button class="hamburger-btn" id="hamburgerBtn" onclick="toggleSidebar()">
+            <span></span>
+            <span></span>
+            <span></span>
+        </button>
+
+        <nav class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <button class="close-sidebar" onclick="toggleSidebar()">×</button>
+            </div>
+
+            <div class="sidebar-items">
+                <a href="/web/admin/users/" class="sidebar-item">Tổng Quan</a>
+                <a href="/web/admin/users/" class="sidebar-item">Bản Đồ</a>
+                <a href="/web/admin/users/" class="sidebar-item">Sơ Đồ</a>
+                <a href="/tham-quan" target="_blank" class="sidebar-item">Tham Quan</a>
+                <a href="/web/admin/users/" class="sidebar-item">Bán Vé</a>
+                <a href="/web/admin/users/" class="sidebar-item">Khách Hàng</a>
+                <a href="/web/admin/users/" class="sidebar-item">Check-in</a>
+                <a href="/web/admin/users/" class="sidebar-item">Check-out</a>
+                <a href="/web/admin/users/" class="sidebar-item">Lịch Sử Tham Quan</a>
+                
+                <a href="/users.html" class="sidebar-item" style="border-top:2px solid rgba(255,255,255,0.1);margin-top:10px;padding-top:15px">Quản Lý User</a>
+                <a href="/orders.html" class="sidebar-item active">Quản Lý Đơn Hàng</a>
+                
+                <button class="sidebar-item logout-btn" onclick="handleLogout()" style="background:#dc3545;color:white;margin-top:auto;font-weight:600;border-top:2px solid rgba(255,255,255,0.2);">
+                    Đăng Xuất
+                </button>
+            </div>
+        </nav>
+
+        <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
+        <main class="main-content">
+            <div id="orders-page" class="page active">
+                <h2 class="page-title">Quản Lý Đơn Hàng</h2>
+                
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-label">Chờ xác nhận</div>
+                        <div class="stat-value" id="stat-pending">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Đã duyệt hôm nay</div>
+                        <div class="stat-value" id="stat-today">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Doanh thu tháng này</div>
+                        <div class="stat-value" id="stat-revenue">0đ</div>
+                    </div>
+                </div>
+
+                <div class="filters-bar">
+                    <div class="filter-buttons">
+                        <button class="filter-btn active" data-status="all">Tất cả</button>
+                        <button class="filter-btn" data-status="waiting_confirmation">Chờ xác nhận</button>
+                        <button class="filter-btn" data-status="paid">Đã duyệt</button>
+                        <button class="filter-btn" data-status="rejected">Đã từ chối</button>
+                    </div>
+                    <span id="orders-count" class="count-badge">Tổng: 0 đơn</span>
+                    <button id="refresh-orders" class="btn btn-secondary">Làm mới</button>
+                </div>
+
+                <div class="card">
+                    <div class="table-responsive">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Mã đơn</th>
+                                    <th>Khách hàng</th>
+                                    <th>Số điện thoại</th>
+                                    <th>Loại vé</th>
+                                    <th>Số lượng</th>
+                                    <th>Tổng tiền</th>
+                                    <th>Chứng từ</th>
+                                    <th>Ngày tạo</th>
+                                    <th>Trạng thái</th>
+                                    <th>Thao tác</th>
+                                </tr>
+                            </thead>
+                            <tbody id="orders-tbody">
+                                <tr>
+                                    <td colspan="10" style="text-align:center;padding:3rem;color:#999">
+                                        Đang tải dữ liệu...
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <div id="loading" class="loading">
+        <div class="loading-spinner"></div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script src="/js/orders.js"></script>
+    <script>
+        async function handleLogout() {
+            if (!confirm('Bạn có chắc chắn muốn đăng xuất?')) return;
+            try {
+                await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+                window.location.href = '/web/admin/login/';
+            } catch (error) {
+                window.location.href = '/web/admin/login/';
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            OrderManager.init();
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bến Nhà Rồng - Bảo Tàng Hồ Chí Minh</title>
+    <link rel="stylesheet" href="css/thamquan.css">
+</head>
+<body>
+    <!-- Language Toggle (Top Right) -->
+    <button class="language-toggle" onclick="toggleLanguage()">ENGLISH</button>
+
+    <!-- Top Navigation Menu -->
+    <nav class="top-nav">
+        <a href="index.html" class="nav-link active" data-vi="Tham Quan 360°" data-en="360° Virtual Tour">Tham Quan 360°</a>
+        <a href="huongdan.html" class="nav-link" data-vi="Hướng Dẫn" data-en="Visitor Guide">Hướng Dẫn</a>
+    </nav>
+
+    <!-- Hero Banner with Title Overlay -->
+    <div class="hero-banner">
+        <img src="web_bnr.png" alt="Bến Nhà Rồng" class="banner-bg">
+        <div class="hero-title">
+            <h1 data-vi="BẾN NHÀ RỒNG" data-en="NHA RONG WHARF">BẾN NHÀ RỒNG</h1>
+            <p data-vi="BẢO TÀNG HỒ CHÍ MINH" data-en="HO CHI MINH MUSEUM">BẢO TÀNG HỒ CHÍ MINH</p>
+        </div>
+    </div>
+
+    <!-- Main Content Area -->
+    <div class="main-content">
+        <!-- Left Sidebar Menu (Expandable) -->
+        <aside class="sidebar-menu" id="sidebarMenu">
+            <!-- Menu Toggle Button -->
+            <button class="menu-toggle-btn" onclick="toggleSidebar()" title="Toggle Menu">
+                <span id="menuIcon">≡</span>
+            </button>
+
+            <!-- Section 1: Toàn Cảnh -->
+            <div class="menu-section">
+                <div class="section-header" onclick="toggleSection('view-dragon')">
+                    <span data-vi="TOÀN CẢNH BẾN NHÀ RỒNG" data-en="OVERALL VIEW OF NHA RONG WHARF">TOÀN CẢNH BẾN NHÀ RỒNG</span>
+                    <span class="toggle-icon">▼</span>
+                </div>
+                <div class="section-items" id="view-dragon">
+                    <div class="menu-item active" onclick="loadGallery('VIEW_DRAGON', 'VIEW')">
+                        <span data-vi="Toàn cảnh Bến Nhà Rồng" data-en="Overall View of Nha Rong Wharf">Toàn cảnh Bến Nhà Rồng</span>
+                    </div>
+                    <div class="menu-item" onclick="loadGallery('VIEW_DRAGON', 'CONG')">
+                        <span data-vi="Cổng vào" data-en="Entrance Gate">Cổng vào</span>
+                    </div>
+                    <div class="menu-item" onclick="loadGallery('VIEW_DRAGON', 'DAI')">
+                        <span data-vi="Đài phun nước" data-en="Fountain">Đài phun nước</span>
+                    </div>
+                    <div class="menu-item" onclick="loadGallery('VIEW_DRAGON', 'TUONG')">
+                        <span data-vi="Tượng đài Nguyễn Tất Thành" data-en="Nguyen Tat Thanh Monument">Tượng đài Nguyễn Tất Thành</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section 2: Tầng 1 -->
+            <div class="menu-section">
+                <div class="section-header" onclick="toggleSection('floor-1')">
+                    <span data-vi="TẦNG 1 NHÀ TRƯNG BÀY" data-en="EXHIBITION BUILDING, FLOOR 1">TẦNG 1 NHÀ TRƯNG BÀY</span>
+                    <span class="toggle-icon">▶</span>
+                </div>
+                <div class="section-items collapsed" id="floor-1">
+                    <div class="menu-item" onclick="loadGallery('FLOOD_1', 'HCM_ROOM')">
+                        <span data-vi="Phòng tưởng niệm Chủ tịch Hồ Chí Minh" data-en="Memorial Room of President Ho Chi Minh">Phòng tưởng niệm Chủ tịch Hồ Chí Minh</span>
+                    </div>
+                    <div class="menu-item" onclick="loadGallery('FLOOD_1', 'HCM_HT')">
+                        <span data-vi="Hồ Chí Minh - Cuộc hành trình của thời đại" data-en="Ho Chi Minh – A Journey of the Era">Hồ Chí Minh - Cuộc hành trình của thời đại</span>
+                    </div>
+                    <div class="menu-item" onclick="loadGallery('FLOOD_1', 'HCM_MN')">
+                        <span data-vi="Bác Hồ với miền Nam, miền Nam với Bác Hồ" data-en="Uncle Ho and the South, The South and Uncle Ho">Bác Hồ với miền Nam, miền Nam với Bác Hồ</span>
+                    </div>
+                    <div class="menu-item" onclick="loadGallery('FLOOD_1', 'TL')">
+                        <span data-vi="Triển lãm: Đi qua cuộc chiến" data-en="Exhibition: Passing Through the War">Triển lãm: Đi qua cuộc chiến</span>
+                    </div>
+                    <div class="menu-item" onclick="loadGallery('FLOOD_1', 'TB_SG1910')">
+                        <span data-vi="Trưng bày: Sài Gòn những năm 1910" data-en="Exhibition: Saigon in the 1910s">Trưng bày: Sài Gòn những năm 1910</span>
+                    </div>
+                    <div class="menu-item" onclick="loadGallery('FLOOD_1', 'TB_VNTN')">
+                        <span data-vi="Trưng bày: Việt Nam những Tuyên ngôn độc lập" data-en="Exhibition: Vietnam – Declarations of Independence">Trưng bày: Việt Nam những Tuyên ngôn độc lập</span>
+                    </div>
+                    <div class="menu-item" onclick="loadGallery('FLOOD_1', 'TB_OTO')">
+                        <span data-vi="Trưng bày: Xe ô tô hiệu Peugeot..." data-en="Exhibition: Peugeot Automobile">Trưng bày: Xe ô tô hiệu Peugeot...</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section 3: Tầng 2 -->
+            <div class="menu-section">
+                <div class="section-header" onclick="toggleSection('floor-2')">
+                    <span data-vi="TẦNG 2 NHÀ TRƯNG BÀY" data-en="EXHIBITION BUILDING, FLOOR 2">TẦNG 2 NHÀ TRƯNG BÀY</span>
+                    <span class="toggle-icon">▶</span>
+                </div>
+                <div class="section-items collapsed" id="floor-2">
+                    <div class="menu-item" onclick="loadGallery('FLOOD_2', 'DT')">
+                        <span data-vi="Đền thờ Bác Hồ ở Nam Bộ" data-en="Ho Chi Minh Temples in Southern Vietnam">Đền thờ Bác Hồ ở Nam Bộ</span>
+                    </div>
+                    <div class="menu-item" onclick="loadGallery('FLOOD_2', 'TB_1')">
+                        <span data-vi="Phòng trưng bày chủ đề thứ nhất" data-en="Thematic Exhibition Room 1">Phòng trưng bày chủ đề thứ nhất</span>
+                    </div>
+                    <div class="menu-item" onclick="loadGallery('FLOOD_2', 'TB_2')">
+                        <span data-vi="Phòng trưng bày chủ đề thứ hai" data-en="Thematic Exhibition Room 2">Phòng trưng bày chủ đề thứ hai</span>
+                    </div>
+                    <div class="menu-item" onclick="loadGallery('FLOOD_2', 'TB_3')">
+                        <span data-vi="Phòng trưng bày chủ đề thứ ba" data-en="Thematic Exhibition Room 3">Phòng trưng bày chủ đề thứ ba</span>
+                    </div>
+                    <div class="menu-item" onclick="loadGallery('FLOOD_2', 'TB_4')">
+                        <span data-vi="Phòng trưng bày chủ đề thứ tư" data-en="Thematic Exhibition Room 4">Phòng trưng bày chủ đề thứ tư</span>
+                    </div>
+                    <div class="menu-item" onclick="loadGallery('FLOOD_2', 'CSDT')">
+                        <span data-vi="Một số hình ảnh cuộc sống đời thường" data-en="Images of Everyday Life">Một số hình ảnh cuộc sống đời thường</span>
+                    </div>
+                    <div class="menu-item" onclick="loadGallery('FLOOD_2', 'HCM_HOC')">
+                        <span data-vi="Hồ Chí Minh và học tập suốt đời" data-en="Ho Chi Minh and Lifelong Learning">Hồ Chí Minh và học tập suốt đời</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Image Display Area -->
+        <div class="image-area" id="imageArea">
+            <!-- Main Image -->
+            <img src="VIEW_DRAGON/VIEW/VIEW.png" alt="Gallery Image" id="mainImage" class="gallery-image">
+
+            <!-- Navigation Arrows -->
+            <button class="nav-arrow left" onclick="previousImage()">‹</button>
+            <button class="nav-arrow right" onclick="nextImage()">›</button>
+
+            <!-- Image Counter -->
+            <div class="image-counter" id="imageCounter">1 / 3</div>
+
+            <!-- Control Buttons (Horizontal: Info + Fullscreen + Zoom) -->
+            <div class="control-buttons">
+                <button class="control-btn" onclick="toggleInfo()" title="Thông tin">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="white">
+                        <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z"/>
+                    </svg>
+                </button>
+                <button class="control-btn" onclick="toggleFullscreen()" title="Phóng to">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="white">
+                        <path d="M5,5H10V7H7V10H5V5M14,5H19V10H17V7H14V5M17,14H19V19H14V17H17V14M10,17V19H5V14H7V17H10Z"/>
+                    </svg>
+                </button>
+                <button class="control-btn" onclick="zoomIn()" title="Phóng to">+</button>
+                <button class="control-btn" onclick="zoomOut()" title="Thu nhỏ">−</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Info Panel -->
+    <div class="info-panel" id="infoPanel">
+        <div class="info-content">
+            <button class="close-btn" onclick="toggleInfo()">×</button>
+            <h2 data-vi="Giới thiệu về Bảo tàng Hồ Chí Minh - Bến Nhà Rồng" data-en="Overview of Ho Chi Minh Museum – Nha Rong Wharf">Giới thiệu về Bảo tàng Hồ Chí Minh - Bến Nhà Rồng</h2>
+            <div class="info-text">
+                <div class="info-vi">
+                    <p>Bảo tàng Hồ Chí Minh hiện tọa lạc tại số 1 Nguyễn Tất Thành, Phường 12, Quận 4, với khuôn viên rộng trên 12.000 ha nằm ở vị trí ngã ba sông Sài Gòn, không gian rộng rãi, thoáng mát.</p>
+                    <p>Ngôi nhà được xây dựng từ giữa năm 1862 và hoàn thành vào năm 1863 với lối kiến trúc phương Tây nhưng trên nóc nhà gắn hai con rồng châu đầu vào mặt trăng theo mô típ "Lưỡng long chầu nguyệt".</p>
+                    <p>Một sự kiện có ý nghĩa đặc biệt là vào ngày 5/6/1911, Bác Hồ đã xuống tàu Amiral Latouche Tréville từ bến cảng Sài Gòn, để đi ra nước ngoài tìm đường cứu nước.</p>
+                    <p>Hiện nay, Bảo tàng có 07 phòng trưng bày về cuộc đời và sự nghiệp cách mạng vĩ đại của Chủ tịch Hồ Chí Minh.</p>
+                </div>
+                <div class="info-en" style="display:none;">
+                    <p>The Ho Chi Minh Museum is located at No. 1 Nguyen Tat Thanh Street, Ward 12, District 4, covering over 12,000 square meters at the confluence of the Saigon River.</p>
+                    <p>Construction began in 1862 and was completed in 1863, featuring Western architecture with two dragons facing the moon on the rooftop.</p>
+                    <p>On June 5, 1911, Nguyen Tat Thanh boarded the ship Amiral Latouche Tréville from this wharf to seek a path for national liberation.</p>
+                    <p>Today, the museum features seven exhibition rooms dedicated to President Ho Chi Minh's life and revolutionary career.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/thamquan.js"></script>
+</body>
+</html>
+

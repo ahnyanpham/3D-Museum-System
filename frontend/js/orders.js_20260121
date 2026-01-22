@@ -1,0 +1,412 @@
+const OrderManager = {
+    currentStatus: 'all',
+    allOrders: [],
+    currentOrder: null,
+    currentRejectOrderId: null,
+
+    init() {
+        this.setupEventListeners();
+        this.loadOrders();
+        this.loadStatistics();
+        this.checkSession();
+    },
+
+    async checkSession() {
+        try {
+            const response = await fetch('/api/auth/session', {
+                credentials: 'include'
+            });
+            const data = await response.json();
+            
+            if (data.success && data.logged_in) {
+                const userName = document.getElementById('user-name');
+                if (userName) {
+                    userName.textContent = data.data.fullname || data.data.username;
+                }
+
+                const permissions = data.data.permissions || [];
+                if (!permissions.includes('all') && !permissions.includes('dashboard')) {
+                    window.location.href = '/admin/';
+                    return;
+                }
+            } else {
+                window.location.href = '/login.html';
+            }
+        } catch (error) {
+            console.error('Session check error:', error);
+        }
+    },
+
+    setupEventListeners() {
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const status = e.target.dataset.status;
+                this.filterOrders(status);
+            });
+        });
+
+        document.getElementById('refresh-orders').addEventListener('click', () => {
+            this.loadOrders();
+            this.loadStatistics();
+        });
+    },
+
+    async loadStatistics() {
+        try {
+            const response = await fetch('/api/admin/orders/statistics', {
+                credentials: 'include'
+            });
+            const data = await response.json();
+
+            if (data.success) {
+                const stats = data.data;
+
+                document.getElementById('stat-pending').textContent = 
+                    stats.pending_count || 0;
+
+                document.getElementById('stat-today').textContent = 
+                    stats.today?.count || 0;
+
+                const revenue = stats.this_month?.total_amount || 0;
+                document.getElementById('stat-revenue').textContent = 
+                    this.formatCurrency(revenue);
+            }
+        } catch (error) {
+            console.error('Load statistics error:', error);
+        }
+    },
+
+    async loadOrders() {
+        showLoading();
+        try {
+            const response = await fetch('/api/admin/orders/list?status=all', {
+                credentials: 'include'
+            });
+            const data = await response.json();
+
+            if (data.success) {
+                this.allOrders = data.data || [];
+                this.renderOrders(this.allOrders);
+                this.updateCount(this.allOrders.length);
+            } else {
+                showToast(data.message || 'Khong the tai du lieu', 'error');
+            }
+        } catch (error) {
+            console.error('Load orders error:', error);
+            showToast('Loi ket noi', 'error');
+        } finally {
+            hideLoading();
+        }
+    },
+
+    filterOrders(status) {
+        this.currentStatus = status;
+
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.status === status);
+        });
+
+        const filtered = status === 'all' 
+            ? this.allOrders
+            : this.allOrders.filter(order => order.status === status);
+
+        this.renderOrders(filtered);
+        this.updateCount(filtered.length);
+    },
+
+    renderOrders(orders) {
+        const tbody = document.getElementById('orders-tbody');
+        
+        if (orders.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="10" class="empty-state">
+                        <i class="fas fa-shopping-cart"></i>
+                        <p>Khong co don hang</p>
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        tbody.innerHTML = orders.map(order => `
+            <tr>
+                <td><strong>${order.order_code}</strong></td>
+                <td>${order.customer_name}</td>
+                <td>${order.customer_phone || '-'}</td>
+                <td>${order.ticket_type}</td>
+                <td>${order.quantity}</td>
+                <td><strong>${this.formatCurrency(order.total_price)}</strong></td>
+                <td>
+                    ${order.payment_proof_path ? 
+                        `<button class="payment-proof-btn" onclick="OrderManager.viewOrderDetail(${order.order_id})">
+                            Xem anh
+                        </button>` 
+                        : '-'}
+                </td>
+                <td>${this.formatDate(order.created_at)}</td>
+                <td>${this.renderStatusBadge(order.status)}</td>
+                <td>
+                    <button class="btn btn-primary btn-sm" onclick="OrderManager.viewOrderDetail(${order.order_id})">
+                        Chi tiet
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+    },
+
+    renderStatusBadge(status) {
+        const statusMap = {
+            'pending': { text: 'Cho thanh toan', class: 'status-pending' },
+            'waiting_confirmation': { text: 'Cho xac nhan', class: 'status-waiting' },
+            'paid': { text: 'Da duyet', class: 'status-paid' },
+            'rejected': { text: 'Da tu choi', class: 'status-rejected' },
+            'cancelled': { text: 'Da huy', class: 'status-cancelled' }
+        };
+
+        const statusInfo = statusMap[status] || { text: status, class: 'status-pending' };
+        return `<span class="status-badge ${statusInfo.class}">${statusInfo.text}</span>`;
+    },
+
+    updateCount(count) {
+        const countElem = document.getElementById('orders-count');
+        if (countElem) {
+            countElem.textContent = `Tong: ${count} don`;
+        }
+    },
+
+    async viewOrderDetail(orderId) {
+        const order = this.allOrders.find(o => o.order_id === orderId);
+        if (!order) return;
+
+        this.currentOrder = order;
+
+        document.getElementById('modal-order-code').textContent = order.order_code;
+        document.getElementById('detail-customer-name').textContent = order.customer_name;
+        document.getElementById('detail-customer-phone').textContent = order.customer_phone || '-';
+        document.getElementById('detail-customer-email').textContent = order.customer_email || '-';
+        document.getElementById('detail-customer-note').textContent = order.customer_note || '-';
+        
+        document.getElementById('detail-ticket-type').textContent = order.ticket_type;
+        document.getElementById('detail-quantity').textContent = order.quantity;
+        document.getElementById('detail-unit-price').textContent = this.formatCurrency(order.unit_price);
+        document.getElementById('detail-total-price').textContent = this.formatCurrency(order.total_price);
+        
+        document.getElementById('detail-bank-name').textContent = order.bank_name || '-';
+        document.getElementById('detail-bank-account').textContent = order.bank_account || '-';
+        document.getElementById('detail-bank-account-name').textContent = order.bank_account_name || '-';
+        document.getElementById('detail-transaction-ref').textContent = order.transaction_ref || order.order_code;
+
+        const proofImg = document.getElementById('payment-proof-img');
+        if (order.payment_proof_path) {
+            proofImg.src = order.payment_proof_path;
+            proofImg.style.display = 'block';
+        } else {
+            proofImg.style.display = 'none';
+        }
+
+        const actionsContainer = document.getElementById('order-actions');
+        if (order.status === 'waiting_confirmation') {
+            actionsContainer.innerHTML = `
+                <button type="button" class="btn btn-secondary" onclick="closeModal()">
+                    Dong
+                </button>
+                <button type="button" class="btn btn-danger" onclick="OrderManager.openRejectModal(${order.order_id})">
+                    Tu choi
+                </button>
+                <button type="button" class="btn btn-success" onclick="OrderManager.approveOrder(${order.order_id})">
+                    Duyet don hang
+                </button>
+            `;
+        } else {
+            let statusText = '';
+            if (order.status === 'paid') {
+                statusText = `<p style="color:#28a745;font-weight:600">Don hang da duoc duyet boi ${order.confirmed_by || 'Admin'}</p>`;
+            } else if (order.status === 'rejected') {
+                statusText = `<p style="color:#dc3545;font-weight:600">Da tu choi: ${order.rejection_reason || 'Khong co ly do'}</p>`;
+            }
+
+            actionsContainer.innerHTML = `
+                ${statusText}
+                <button type="button" class="btn btn-secondary" onclick="closeModal()">
+                    Dong
+                </button>
+            `;
+        }
+
+        openModal('order-detail-modal');
+    },
+
+    async approveOrder(orderId) {
+        if (!confirm('Xac nhan duyet don hang nay?\n\nHe thong se tu dong tao ve va gui email cho khach hang.')) {
+            return;
+        }
+
+        showLoading();
+        try {
+            const response = await fetch(`/api/admin/orders/${orderId}/approve`, {
+                method: 'POST',
+                credentials: 'include'
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                showToast('Da duyet don hang thanh cong', 'success');
+                closeModal();
+                this.loadOrders();
+                this.loadStatistics();
+            } else {
+                showToast(data.message || 'Duyet don hang that bai', 'error');
+            }
+        } catch (error) {
+            console.error('Approve order error:', error);
+            showToast('Loi ket noi', 'error');
+        } finally {
+            hideLoading();
+        }
+    },
+
+    openRejectModal(orderId) {
+        console.log('Opening reject modal for order:', orderId);
+        
+        // Store order ID in manager
+        this.currentRejectOrderId = orderId;
+        
+        // Clear textarea
+        const reasonInput = document.getElementById('rejection-reason');
+        if (reasonInput) {
+            reasonInput.value = '';
+        } else {
+            console.error('Element #rejection-reason not found!');
+        }
+        
+        // Close detail modal first
+        closeModal();
+        
+        // Open reject modal
+        setTimeout(() => {
+            openModal('reject-modal');
+        }, 100);
+    },
+
+    async confirmReject() {
+        const orderId = this.currentRejectOrderId;
+        const reasonInput = document.getElementById('rejection-reason');
+        
+        if (!orderId) {
+            showToast('Loi: Khong tim thay ma don hang', 'error');
+            return;
+        }
+        
+        if (!reasonInput) {
+            showToast('Loi: Khong tim thay input ly do', 'error');
+            return;
+        }
+        
+        const reason = reasonInput.value.trim();
+
+        if (!reason) {
+            showToast('Vui long nhap ly do tu choi', 'error');
+            return;
+        }
+
+        if (!confirm('Xac nhan tu choi don hang nay?')) {
+            return;
+        }
+
+        showLoading();
+        try {
+            const response = await fetch(`/api/admin/orders/${orderId}/reject`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ reason })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                showToast('Da tu choi don hang', 'success');
+                closeRejectModal();
+                this.loadOrders();
+                this.loadStatistics();
+                this.currentRejectOrderId = null;
+            } else {
+                showToast(data.message || 'Tu choi don hang that bai', 'error');
+            }
+        } catch (error) {
+            console.error('Reject order error:', error);
+            showToast('Loi ket noi', 'error');
+        } finally {
+            hideLoading();
+        }
+    },
+
+    formatCurrency(amount) {
+        return new Intl.NumberFormat('vi-VN', {
+            style: 'currency',
+            currency: 'VND'
+        }).format(amount);
+    },
+
+    formatDate(dateString) {
+        if (!dateString) return '-';
+        const date = new Date(dateString);
+        return date.toLocaleString('vi-VN', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    }
+};
+
+function openModal(modalId) {
+    const modal = document.getElementById(modalId);
+    if (modal) {
+        modal.classList.add('active');
+    } else {
+        console.error('Modal not found:', modalId);
+    }
+}
+
+function closeModal() {
+    const modal = document.getElementById('order-detail-modal');
+    if (modal) modal.classList.remove('active');
+}
+
+function closeRejectModal() {
+    const modal = document.getElementById('reject-modal');
+    if (modal) modal.classList.remove('active');
+}
+
+function showLoading() {
+    const loading = document.getElementById('loading');
+    if (loading) loading.classList.add('active');
+}
+
+function hideLoading() {
+    const loading = document.getElementById('loading');
+    if (loading) loading.classList.remove('active');
+}
+
+function showToast(message, type = 'info') {
+    const toast = document.getElementById('toast');
+    const toastMessage = document.getElementById('toast-message');
+    
+    if (toast && toastMessage) {
+        toast.className = `toast ${type} active`;
+        toastMessage.textContent = message;
+        
+        setTimeout(() => {
+            toast.classList.remove('active');
+        }, 3000);
+    } else {
+        console.log('Toast:', type, message);
+        alert(message);
+    }
+}
+
+console.log('Orders Manager loaded');

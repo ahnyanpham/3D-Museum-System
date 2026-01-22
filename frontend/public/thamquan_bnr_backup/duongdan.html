@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hướng Dẫn Tham Quan - Bến Nhà Rồng</title>
+    <link rel="stylesheet" href="css/huongdan.css">
+</head>
+<body>
+    <!-- Language Toggle -->
+    <button class="language-toggle" onclick="toggleLanguage()">ENGLISH</button>
+
+    <!-- Hero Banner -->
+    <div class="hero-banner">
+        <img src="web_bnr.png" alt="Bến Nhà Rồng" class="banner-bg">
+        <div class="hero-title">
+            <h1 data-vi="HƯỚNG DẪN THAM QUAN" data-en="VISITOR GUIDE">HƯỚNG DẪN THAM QUAN</h1>
+            <p data-vi="BẢO TÀNG HỒ CHÍ MINH - BẾN NHÀ RỒNG" data-en="HO CHI MINH MUSEUM - NHA RONG WHARF">BẢO TÀNG HỒ CHÍ MINH - BẾN NHÀ RỒNG</p>
+        </div>
+    </div>
+
+    <!-- Navigation -->
+    <nav class="main-nav">
+        <a href="index.html" class="nav-link" data-vi="Tham Quan 360°" data-en="360° Virtual Tour">Tham Quan 360°</a>
+        <a href="huongdan.html" class="nav-link active" data-vi="Hướng Dẫn" data-en="Guide">Hướng Dẫn</a>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="container">
+        <!-- Timeline Guide -->
+        <div class="timeline">
+            <!-- Step 1: Mua Vé -->
+            <div class="timeline-item">
+                <div class="timeline-icon">1</div>
+                <div class="timeline-content">
+                    <h2 data-vi="Mua Vé Tham Quan" data-en="Purchase Tickets">Mua Vé Tham Quan</h2>
+                    <div class="content-card">
+                        <img src="images/ticket-counter.jpg" alt="Quầy vé" class="guide-image">
+                        <div class="guide-text">
+                            <h3 data-vi="Giá Vé" data-en="Ticket Prices">Giá Vé</h3>
+                            <ul data-vi-content data-en-content>
+                                <li data-vi="Người lớn: 30.000đ" data-en="Adults: 30,000 VND">Người lớn: 30.000đ</li>
+                                <li data-vi="Học sinh, sinh viên: 15.000đ" data-en="Students: 15,000 VND">Học sinh, sinh viên: 15.000đ</li>
+                                <li data-vi="Trẻ em dưới 6 tuổi: Miễn phí" data-en="Children under 6: Free">Trẻ em dưới 6 tuổi: Miễn phí</li>
+                                <li data-vi="Người cao tuổi trên 60: Miễn phí" data-en="Seniors over 60: Free">Người cao tuổi trên 60: Miễn phí</li>
+                            </ul>
+                            <h3 data-vi="Cách Mua" data-en="How to Purchase">Cách Mua</h3>
+                            <ul>
+                                <li data-vi="Mua trực tiếp tại quầy vé (giờ hành chính)" data-en="Buy at ticket counter (business hours)">Mua trực tiếp tại quầy vé (giờ hành chính)</li>
+                                <li data-vi="Đặt online qua website (đang phát triển)" data-en="Online booking via website (coming soon)">Đặt online qua website (đang phát triển)</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 2: Check-in -->
+            <div class="timeline-item">
+                <div class="timeline-icon">2</div>
+                <div class="timeline-content">
+                    <h2 data-vi="Check-in Tại Cổng Vào" data-en="Check-in at Entrance">Check-in Tại Cổng Vào</h2>
+                    <div class="content-card">
+                        <img src="VIEW_DRAGON/CONG/CONG.jpg" alt="Cổng vào" class="guide-image">
+                        <div class="guide-text">
+                            <h3 data-vi="Quy Trình Check-in" data-en="Check-in Process">Quy Trình Check-in</h3>
+                            <ol>
+                                <li data-vi="Xuất trình vé hoặc mã QR tại quầy check-in" data-en="Present ticket or QR code at check-in counter">Xuất trình vé hoặc mã QR tại quầy check-in</li>
+                                <li data-vi="Nhận vòng tay/thẻ tham quan (nếu có)" data-en="Receive wristband/visitor badge (if applicable)">Nhận vòng tay/thẻ tham quan (nếu có)</li>
+                                <li data-vi="Nhận tài liệu hướng dẫn và bản đồ" data-en="Receive guide materials and map">Nhận tài liệu hướng dẫn và bản đồ</li>
+                            </ol>
+                            <div class="info-box">
+                                <strong data-vi="Lưu ý:" data-en="Note:">Lưu ý:</strong>
+                                <span data-vi="Giữ vé/thẻ tham quan trong suốt chuyến thăm" data-en="Keep ticket/badge throughout your visit">Giữ vé/thẻ tham quan trong suốt chuyến thăm</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 3: Tham Quan -->
+            <div class="timeline-item">
+                <div class="timeline-icon">3</div>
+                <div class="timeline-content">
+                    <h2 data-vi="Tham Quan Theo Lộ Trình" data-en="Follow the Tour Route">Tham Quan Theo Lộ Trình</h2>
+                    
+                    <!-- Khu vực 1: Toàn cảnh -->
+                    <div class="location-section">
+                        <h3 class="section-title" data-vi="KHU VỰC 1: TOÀN CẢNH BẾN NHÀ RỒNG" data-en="AREA 1: OVERVIEW OF NHA RONG WHARF">KHU VỰC 1: TOÀN CẢNH BẾN NHÀ RỒNG</h3>
+                        
+                        <div class="location-grid">
+                            <div class="location-card">
+                                <img src="VIEW_DRAGON/VIEW/VIEW.png" alt="Toàn cảnh" class="location-image">
+                                <h4 data-vi="Toàn Cảnh Bến Nhà Rồng" data-en="Overview of Nha Rong Wharf">Toàn Cảnh Bến Nhà Rồng</h4>
+                                <p data-vi="Ngắm nhìn toàn bộ khu vực bảo tàng từ bên ngoài, chụp ảnh lưu niệm." data-en="View the entire museum area from outside, take souvenir photos.">Ngắm nhìn toàn bộ khu vực bảo tàng từ bên ngoài, chụp ảnh lưu niệm.</p>
+                            </div>
+
+                            <div class="location-card">
+                                <img src="VIEW_DRAGON/DAI/DAI.png" alt="Đài phun nước" class="location-image">
+                                <h4 data-vi="Đài Phun Nước" data-en="Fountain">Đài Phun Nước</h4>
+                                <p data-vi="Điểm check-in nổi tiếng với đài phun nước trang trí đẹp mắt." data-en="Famous check-in spot with beautiful decorative fountain.">Điểm check-in nổi tiếng với đài phun nước trang trí đẹp mắt.</p>
+                            </div>
+
+                            <div class="location-card">
+                                <img src="VIEW_DRAGON/TUONG/TUONG.jpg" alt="Tượng đài" class="location-image">
+                                <h4 data-vi="Tượng Đài Nguyễn Tất Thành" data-en="Nguyen Tat Thanh Monument">Tượng Đài Nguyễn Tất Thành</h4>
+                                <p data-vi="Tượng đài tưởng niệm Chủ tịch Hồ Chí Minh thời trẻ lên đường tìm đường cứu nước." data-en="Monument commemorating young Ho Chi Minh departing to seek national salvation.">Tượng đài tưởng niệm Chủ tịch Hồ Chí Minh thời trẻ lên đường tìm đường cứu nước.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Khu vực 2: Tầng 1 -->
+                    <div class="location-section">
+                        <h3 class="section-title" data-vi="KHU VỰC 2: TẦNG 1 NHÀ TRƯNG BÀY" data-en="AREA 2: EXHIBITION BUILDING - FLOOR 1">KHU VỰC 2: TẦNG 1 NHÀ TRƯNG BÀY</h3>
+                        
+                        <div class="location-grid">
+                            <div class="location-card">
+                                <img src="FLOOD_1/HCM_ROOM/HCM.png" alt="Phòng tưởng niệm" class="location-image">
+                                <h4 data-vi="Phòng Tưởng Niệm Chủ Tịch Hồ Chí Minh" data-en="Memorial Room of President Ho Chi Minh">Phòng Tưởng Niệm Chủ Tịch Hồ Chí Minh</h4>
+                                <p data-vi="Không gian trang nghiêm tưởng nhớ Chủ tịch Hồ Chí Minh." data-en="Solemn space commemorating President Ho Chi Minh.">Không gian trang nghiêm tưởng nhớ Chủ tịch Hồ Chí Minh.</p>
+                            </div>
+
+                            <div class="location-card">
+                                <img src="FLOOD_1/HCM_HT/HCM_HT.png" alt="Hành trình" class="location-image">
+                                <h4 data-vi="Hồ Chí Minh - Cuộc Hành Trình Của Thời Đại" data-en="Ho Chi Minh - A Journey of the Era">Hồ Chí Minh - Cuộc Hành Trình Của Thời Đại</h4>
+                                <p data-vi="Triển lãm về cuộc đời và sự nghiệp cách mạng của Bác." data-en="Exhibition on his life and revolutionary career.">Triển lãm về cuộc đời và sự nghiệp cách mạng của Bác.</p>
+                            </div>
+
+                            <div class="location-card">
+                                <img src="FLOOD_1/HCM_MN/HCM_MN.png" alt="Bác Hồ và miền Nam" class="location-image">
+                                <h4 data-vi="Bác Hồ Với Miền Nam" data-en="Uncle Ho and the South">Bác Hồ Với Miền Nam</h4>
+                                <p data-vi="Mối quan hệ đặc biệt giữa Bác Hồ và nhân dân miền Nam." data-en="The special bond between Uncle Ho and the Southern people.">Mối quan hệ đặc biệt giữa Bác Hồ và nhân dân miền Nam.</p>
+                            </div>
+
+                            <div class="location-card">
+                                <img src="FLOOD_1/TL/TL.png" alt="Triển lãm" class="location-image">
+                                <h4 data-vi="Triển Lãm: Đi Qua Cuộc Chiến" data-en="Exhibition: Passing Through the War">Triển Lãm: Đi Qua Cuộc Chiến</h4>
+                                <p data-vi="Hiện vật và tư liệu về chiến tranh giải phóng." data-en="Artifacts and documents about the liberation war.">Hiện vật và tư liệu về chiến tranh giải phóng.</p>
+                            </div>
+
+                            <div class="location-card">
+                                <img src="FLOOD_1/TB_SG1910/TB_SG1910.png" alt="Sài Gòn 1910" class="location-image">
+                                <h4 data-vi="Sài Gòn Những Năm 1910" data-en="Saigon in the 1910s">Sài Gòn Những Năm 1910</h4>
+                                <p data-vi="Tái hiện Sài Gòn thời điểm Bác lên đường." data-en="Recreating Saigon when Uncle Ho departed.">Tái hiện Sài Gòn thời điểm Bác lên đường.</p>
+                            </div>
+
+                            <div class="location-card">
+                                <img src="FLOOD_1/TB_OTO/TB_OTO.png" alt="Xe ô tô" class="location-image">
+                                <h4 data-vi="Xe Ô Tô Peugeot Cổ" data-en="Vintage Peugeot Automobile">Xe Ô Tô Peugeot Cổ</h4>
+                                <p data-vi="Chiếc xe cổ tiêu biểu thời đầu thế kỷ 20." data-en="Iconic vintage car from early 20th century.">Chiếc xe cổ tiêu biểu thời đầu thế kỷ 20.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Khu vực 3: Tầng 2 -->
+                    <div class="location-section">
+                        <h3 class="section-title" data-vi="KHU VỰC 3: TẦNG 2 NHÀ TRƯNG BÀY" data-en="AREA 3: EXHIBITION BUILDING - FLOOR 2">KHU VỰC 3: TẦNG 2 NHÀ TRƯNG BÀY</h3>
+                        
+                        <div class="location-grid">
+                            <div class="location-card">
+                                <img src="FLOOD_2/DT/DT.png" alt="Đền thờ" class="location-image">
+                                <h4 data-vi="Đền Thờ Bác Hồ Ở Nam Bộ" data-en="Ho Chi Minh Temples in Southern Vietnam">Đền Thờ Bác Hồ Ở Nam Bộ</h4>
+                                <p data-vi="Giới thiệu các đền thờ Bác Hồ trên khắp miền Nam." data-en="Introducing Uncle Ho temples throughout the South.">Giới thiệu các đền thờ Bác Hồ trên khắp miền Nam.</p>
+                            </div>
+
+                            <div class="location-card">
+                                <img src="FLOOD_2/TB_1/TB_1.png" alt="Phòng chủ đề 1" class="location-image">
+                                <h4 data-vi="Phòng Trưng Bày Chủ Đề 1" data-en="Thematic Exhibition Room 1">Phòng Trưng Bày Chủ Đề 1</h4>
+                                <p data-vi="Triển lãm chuyên đề về giai đoạn 1911-1930." data-en="Thematic exhibition on the 1911-1930 period.">Triển lãm chuyên đề về giai đoạn 1911-1930.</p>
+                            </div>
+
+                            <div class="location-card">
+                                <img src="FLOOD_2/TB_2/TB_2.png" alt="Phòng chủ đề 2" class="location-image">
+                                <h4 data-vi="Phòng Trưng Bày Chủ Đề 2" data-en="Thematic Exhibition Room 2">Phòng Trưng Bày Chủ Đề 2</h4>
+                                <p data-vi="Tư liệu về hoạt động cách mạng 1930-1945." data-en="Documents on revolutionary activities 1930-1945.">Tư liệu về hoạt động cách mạng 1930-1945.</p>
+                            </div>
+
+                            <div class="location-card">
+                                <img src="FLOOD_2/CSDT/CSDT.png" alt="Cuộc sống" class="location-image">
+                                <h4 data-vi="Hình Ảnh Cuộc Sống Đời Thường" data-en="Images of Everyday Life">Hình Ảnh Cuộc Sống Đời Thường</h4>
+                                <p data-vi="Những khoảnh khắc đời thường gần gũi của Bác." data-en="Intimate everyday moments of Uncle Ho.">Những khoảnh khắc đời thường gần gũi của Bác.</p>
+                            </div>
+
+                            <div class="location-card">
+                                <img src="FLOOD_2/HCM_HOC/HCM_HOC.png" alt="Học tập" class="location-image">
+                                <h4 data-vi="Hồ Chí Minh Và Học Tập Suốt Đời" data-en="Ho Chi Minh and Lifelong Learning">Hồ Chí Minh Và Học Tập Suốt Đời</h4>
+                                <p data-vi="Tinh thần ham học hỏi không ngừng của Bác." data-en="Uncle Ho's tireless learning spirit.">Tinh thần ham học hỏi không ngừng của Bác.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Thời gian tham quan -->
+                    <div class="info-box" style="margin-top: 30px;">
+                        <strong data-vi="Thời gian tham quan khuyến nghị:" data-en="Recommended visit duration:">Thời gian tham quan khuyến nghị:</strong>
+                        <span data-vi="90-120 phút" data-en="90-120 minutes">90-120 phút</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 4: Check-out -->
+            <div class="timeline-item">
+                <div class="timeline-icon">4</div>
+                <div class="timeline-content">
+                    <h2 data-vi="Check-out Tại Lối Ra" data-en="Check-out at Exit">Check-out Tại Lối Ra</h2>
+                    <div class="content-card">
+                        <img src="VIEW_DRAGON/CONG/CONG_2.png" alt="Lối ra" class="guide-image">
+                        <div class="guide-text">
+                            <h3 data-vi="Quy Trình Check-out" data-en="Check-out Process">Quy Trình Check-out</h3>
+                            <ol>
+                                <li data-vi="Đến quầy check-out tại lối ra" data-en="Go to check-out counter at exit">Đến quầy check-out tại lối ra</li>
+                                <li data-vi="Trả vòng tay/thẻ tham quan (nếu có)" data-en="Return wristband/visitor badge (if applicable)">Trả vòng tay/thẻ tham quan (nếu có)</li>
+                                <li data-vi="Nhận quà lưu niệm (nếu có chương trình)" data-en="Receive souvenir (if program available)">Nhận quà lưu niệm (nếu có chương trình)</li>
+                            </ol>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 5: Đánh giá -->
+            <div class="timeline-item">
+                <div class="timeline-icon">5</div>
+                <div class="timeline-content">
+                    <h2 data-vi="Đánh Giá Trải Nghiệm" data-en="Rate Your Experience">Đánh Giá Trải Nghiệm</h2>
+                    <div class="content-card">
+                        <div class="rating-section">
+                            <h3 data-vi="Chúng tôi rất mong nhận được phản hồi từ bạn!" data-en="We'd love to hear from you!">Chúng tôi rất mong nhận được phản hồi từ bạn!</h3>
+                            <p data-vi="Vui lòng dành vài phút đánh giá chuyến tham quan của bạn:" data-en="Please take a few minutes to rate your visit:">Vui lòng dành vài phút đánh giá chuyến tham quan của bạn:</p>
+                            
+                            <div class="rating-options">
+                                <div class="rating-item">
+                                    <span class="rating-label" data-vi="Chất lượng trưng bày:" data-en="Exhibition quality:">Chất lượng trưng bày:</span>
+                                    <div class="stars">★★★★★</div>
+                                </div>
+                                <div class="rating-item">
+                                    <span class="rating-label" data-vi="Hướng dẫn viên:" data-en="Tour guides:">Hướng dẫn viên:</span>
+                                    <div class="stars">★★★★★</div>
+                                </div>
+                                <div class="rating-item">
+                                    <span class="rating-label" data-vi="Cơ sở vật chất:" data-en="Facilities:">Cơ sở vật chất:</span>
+                                    <div class="stars">★★★★★</div>
+                                </div>
+                                <div class="rating-item">
+                                    <span class="rating-label" data-vi="Trải nghiệm chung:" data-en="Overall experience:">Trải nghiệm chung:</span>
+                                    <div class="stars">★★★★★</div>
+                                </div>
+                            </div>
+
+                            <div class="feedback-methods">
+                                <h4 data-vi="Cách thức đánh giá:" data-en="How to provide feedback:">Cách thức đánh giá:</h4>
+                                <ul>
+                                    <li data-vi="Quét mã QR tại quầy check-out" data-en="Scan QR code at check-out counter">Quét mã QR tại quầy check-out</li>
+                                    <li data-vi="Gửi email: lienhe@baotanghcm.vn" data-en="Email: lienhe@baotanghcm.vn">Gửi email: lienhe@baotanghcm.vn</li>
+                                    <li data-vi="Điền phiếu khảo sát tại chỗ" data-en="Fill out on-site survey form">Điền phiếu khảo sát tại chỗ</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- QR Code Section -->
+        <div class="qr-section">
+            <h2 data-vi="Trải Nghiệm Tham Quan 360°" data-en="360° Virtual Tour Experience">Trải Nghiệm Tham Quan 360°</h2>
+            <p data-vi="Quét mã QR để khám phá bảo tàng online" data-en="Scan QR code to explore museum online">Quét mã QR để khám phá bảo tàng online</p>
+            <div class="qr-placeholder">
+                [QR CODE]
+            </div>
+            <a href="index.html" class="btn-primary" data-vi="Hoặc nhấn vào đây" data-en="Or click here">Hoặc nhấn vào đây</a>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="footer-content">
+            <div class="footer-section">
+                <h3 data-vi="Giờ Mở Cửa" data-en="Opening Hours">Giờ Mở Cửa</h3>
+                <p data-vi="Thứ 2 - Chủ Nhật: 7:30 - 17:00" data-en="Mon - Sun: 7:30 AM - 5:00 PM">Thứ 2 - Chủ Nhật: 7:30 - 17:00</p>
+                <p data-vi="Nghỉ: Tết Nguyên Đán" data-en="Closed: Lunar New Year">Nghỉ: Tết Nguyên Đán</p>
+            </div>
+            <div class="footer-section">
+                <h3 data-vi="Liên Hệ" data-en="Contact">Liên Hệ</h3>
+                <p data-vi="Địa chỉ: 1 Nguyễn Tất Thành, P.12, Q.4, TP.HCM" data-en="Address: 1 Nguyen Tat Thanh St., Ward 12, Dist. 4, HCMC">Địa chỉ: 1 Nguyễn Tất Thành, P.12, Q.4, TP.HCM</p>
+                <p>Email: lienhe@baotanghcm.vn</p>
+                <p data-vi="Điện thoại: (028) 3823 0569" data-en="Phone: (028) 3823 0569">Điện thoại: (028) 3823 0569</p>
+            </div>
+            <div class="footer-section">
+                <h3 data-vi="Kết Nối" data-en="Connect">Kết Nối</h3>
+                <div class="social-links">
+                    <a href="#" class="social-icon">Facebook</a>
+                    <a href="#" class="social-icon">Youtube</a>
+                    <a href="#" class="social-icon">Instagram</a>
+                </div>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <p data-vi="© 2024 Bảo Tàng Hồ Chí Minh - Bến Nhà Rồng. All rights reserved." data-en="© 2024 Ho Chi Minh Museum - Nha Rong Wharf. All rights reserved.">© 2024 Bảo Tàng Hồ Chí Minh - Bến Nhà Rồng. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <script src="js/huongdan.js"></script>
+</body>
+</html>
+

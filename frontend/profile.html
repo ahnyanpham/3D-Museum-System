@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Thông Tin Cá Nhân - Bảo Tàng Bến Nhà Rồng</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f5f5f5;
+            min-height: 100vh;
+        }
+
+        nav {
+            background: white;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 1.3rem;
+            font-weight: bold;
+            color: #c41e3a;
+            text-decoration: none;
+        }
+
+        .btn-back {
+            padding: 0.5rem 1rem;
+            background: #f0f0f0;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            text-decoration: none;
+            color: #333;
+            transition: all 0.3s;
+        }
+
+        .btn-back:hover {
+            background: #e0e0e0;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 2rem auto;
+            padding: 0 2rem;
+        }
+
+        .profile-card {
+            background: white;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+        }
+
+        .profile-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 3rem 2rem;
+            text-align: center;
+            color: white;
+        }
+
+        .profile-avatar {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            background: white;
+            color: #667eea;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 3rem;
+            font-weight: bold;
+            margin: 0 auto 1rem;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+
+        .profile-name {
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .profile-role {
+            opacity: 0.9;
+        }
+
+        .profile-body {
+            padding: 2rem;
+        }
+
+        .info-section {
+            margin-bottom: 2rem;
+        }
+
+        .section-title {
+            font-size: 1.2rem;
+            color: #c41e3a;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid #f0f0f0;
+        }
+
+        .info-grid {
+            display: grid;
+            gap: 1rem;
+        }
+
+        .info-row {
+            display: flex;
+            padding: 1rem;
+            background: #f8f8f8;
+            border-radius: 10px;
+        }
+
+        .info-label {
+            flex: 0 0 150px;
+            color: #666;
+            font-weight: 500;
+        }
+
+        .info-value {
+            flex: 1;
+            color: #333;
+            font-weight: 600;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 1.5rem;
+            border-radius: 15px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-label {
+            opacity: 0.9;
+        }
+
+        .actions {
+            display: grid;
+            gap: 1rem;
+            margin-top: 2rem;
+        }
+
+        .btn {
+            padding: 1rem;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 1rem;
+            transition: all 0.3s;
+            text-align: center;
+            text-decoration: none;
+            display: block;
+        }
+
+        .btn-primary {
+            background: #c41e3a;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #a01828;
+            transform: translateY(-2px);
+        }
+
+        .btn-secondary {
+            background: #f0f0f0;
+            color: #333;
+        }
+
+        .btn-secondary:hover {
+            background: #e0e0e0;
+        }
+
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+
+        .modal.show {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 20px;
+            max-width: 500px;
+            width: 100%;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 2rem;
+            border-radius: 20px 20px 0 0;
+            position: relative;
+        }
+
+        .modal-title {
+            font-size: 1.5rem;
+            margin: 0;
+        }
+
+        .close-modal {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            font-size: 1.5rem;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .close-modal:hover {
+            background: rgba(255,255,255,0.3);
+        }
+
+        .modal-body {
+            padding: 2rem;
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: #333;
+            font-weight: 500;
+        }
+
+        input {
+            width: 100%;
+            padding: 0.8rem;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 1rem;
+            transition: all 0.3s;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #c41e3a;
+            box-shadow: 0 0 0 3px rgba(196, 30, 58, 0.1);
+        }
+
+        input:disabled {
+            background: #f5f5f5;
+            cursor: not-allowed;
+        }
+
+        .password-wrapper {
+            position: relative;
+        }
+
+        .toggle-password {
+            position: absolute;
+            right: 1rem;
+            top: 50%;
+            transform: translateY(-50%);
+            cursor: pointer;
+            user-select: none;
+            color: #666;
+            font-size: 1.2rem;
+        }
+
+        .alert {
+            padding: 1rem;
+            border-radius: 10px;
+            margin-bottom: 1rem;
+            display: none;
+        }
+
+        .alert.show {
+            display: block;
+        }
+
+        .alert-error {
+            background: #fee;
+            color: #c00;
+            border: 1px solid #fcc;
+        }
+
+        .alert-success {
+            background: #efe;
+            color: #0a0;
+            border: 1px solid #cfc;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 3rem;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #c41e3a;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 0 1rem;
+            }
+
+            .info-row {
+                flex-direction: column;
+                gap: 0.5rem;
+            }
+
+            .info-label {
+                flex: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <nav>
+        <a href="/" class="logo">Bảo Tàng Bến Nhà Rồng</a>
+        <a href="/" class="btn-back">← Về Trang Chủ</a>
+    </nav>
+
+    <div class="container">
+        <div class="loading" id="loadingState">
+            <div class="spinner"></div>
+            <p>Đang tải thông tin...</p>
+        </div>
+
+        <div class="profile-card" id="profileCard" style="display: none;">
+            <div class="profile-header">
+                <div class="profile-avatar" id="avatar">A</div>
+                <h1 class="profile-name" id="fullname">Tên Người Dùng</h1>
+                <p class="profile-role" id="role">Khách Hàng</p>
+            </div>
+
+            <div class="profile-body">
+                <div class="stats-grid" id="statsGrid">
+                    <div class="stat-card">
+                        <div class="stat-value" id="totalTickets">0</div>
+                        <div class="stat-label">Tổng Vé Đã Mua</div>
+                    </div>
+                    <div class="stat-card" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                        <div class="stat-value" id="activeTickets">0</div>
+                        <div class="stat-label">Vé Đang Hoạt Động</div>
+                    </div>
+                </div>
+
+                <div class="info-section">
+                    <h2 class="section-title">Thông Tin Tài Khoản</h2>
+                    <div class="info-grid">
+                        <div class="info-row">
+                            <span class="info-label">Tên đăng nhập:</span>
+                            <span class="info-value" id="username">-</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Họ và tên:</span>
+                            <span class="info-value" id="fullnameInfo">-</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Email:</span>
+                            <span class="info-value" id="email">-</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Số điện thoại:</span>
+                            <span class="info-value" id="phone">-</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Vai trò:</span>
+                            <span class="info-value" id="roleInfo">-</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="actions">
+                    <a href="/tickets.html" class="btn btn-primary">
+                        🎫 Xem Vé Của Tôi
+                    </a>
+                    <button class="btn btn-secondary" onclick="showEditModal()">
+                        ✏️ Chỉnh Sửa Thông Tin
+                    </button>
+                    <button class="btn btn-secondary" onclick="showPasswordModal()">
+                        🔑 Đổi Mật Khẩu
+                    </button>
+                    <button class="btn btn-secondary" onclick="logout()">
+                        🚪 Đăng Xuất
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Profile Modal -->
+    <div class="modal" id="editModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button class="close-modal" onclick="closeEditModal()">×</button>
+                <h2 class="modal-title">Chỉnh Sửa Thông Tin</h2>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-error" id="editError"></div>
+                <div class="alert alert-success" id="editSuccess"></div>
+
+                <form id="editForm">
+                    <div class="form-group">
+                        <label>Tên đăng nhập</label>
+                        <input type="text" id="editUsername" disabled>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Họ và tên</label>
+                        <input type="text" id="editFullname" disabled>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" id="editEmail" placeholder="Nhập email">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Số điện thoại</label>
+                        <input type="tel" id="editPhone" placeholder="Nhập số điện thoại" pattern="[0-9]{10,11}">
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">
+                        💾 Lưu Thay Đổi
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Change Password Modal -->
+    <div class="modal" id="passwordModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button class="close-modal" onclick="closePasswordModal()">×</button>
+                <h2 class="modal-title">Đổi Mật Khẩu</h2>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-error" id="passwordError"></div>
+                <div class="alert alert-success" id="passwordSuccess"></div>
+
+                <form id="passwordForm">
+                    <div class="form-group">
+                        <label>Mật khẩu hiện tại <span style="color: #c41e3a;">*</span></label>
+                        <div class="password-wrapper">
+                            <input type="password" id="oldPassword" required placeholder="Nhập mật khẩu hiện tại">
+                            <span class="toggle-password" onclick="togglePasswordField('oldPassword')">👁️</span>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Mật khẩu mới <span style="color: #c41e3a;">*</span></label>
+                        <div class="password-wrapper">
+                            <input type="password" id="newPassword" required placeholder="Nhập mật khẩu mới" minlength="8">
+                            <span class="toggle-password" onclick="togglePasswordField('newPassword')">👁️</span>
+                        </div>
+                        <small style="color: #666;">Tối thiểu 8 ký tự</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Xác nhận mật khẩu mới <span style="color: #c41e3a;">*</span></label>
+                        <div class="password-wrapper">
+                            <input type="password" id="confirmPassword" required placeholder="Nhập lại mật khẩu mới">
+                            <span class="toggle-password" onclick="togglePasswordField('confirmPassword')">👁️</span>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">
+                        🔑 Đổi Mật Khẩu
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = '/api';
+        let currentUserId = null;
+
+        window.addEventListener('DOMContentLoaded', async () => {
+            await loadProfile();
+        });
+
+        async function loadProfile() {
+            try {
+                const response = await fetch(`${API_URL}/auth/session`, {
+                    credentials: 'include'
+                });
+                const data = await response.json();
+
+                if (!data.success || !data.logged_in) {
+                    window.location.href = '/login.html';
+                    return;
+                }
+
+                const user = data.data;
+                currentUserId = user.user_id;
+
+                document.getElementById('avatar').textContent = user.username.charAt(0).toUpperCase();
+                document.getElementById('fullname').textContent = user.fullname || user.username;
+                document.getElementById('role').textContent = user.role || 'Khách Hàng';
+
+                document.getElementById('username').textContent = user.username;
+                document.getElementById('fullnameInfo').textContent = user.fullname || '-';
+                document.getElementById('email').textContent = user.email || '-';
+                document.getElementById('phone').textContent = user.phone || '-';
+                document.getElementById('roleInfo').textContent = user.role || '-';
+
+                await loadTicketStats();
+
+                document.getElementById('loadingState').style.display = 'none';
+                document.getElementById('profileCard').style.display = 'block';
+
+            } catch (error) {
+                console.error('Load profile error:', error);
+                window.location.href = '/login.html';
+            }
+        }
+
+        async function loadTicketStats() {
+            try {
+                const response = await fetch(`${API_URL}/customer/tickets?per_page=1000`, {
+                    credentials: 'include'
+                });
+                const data = await response.json();
+
+                if (data.success && data.data) {
+                    const tickets = data.data;
+                    const activeCount = tickets.filter(t => t.status === 'active').length;
+
+                    document.getElementById('totalTickets').textContent = tickets.length;
+                    document.getElementById('activeTickets').textContent = activeCount;
+                }
+            } catch (error) {
+                console.error('Load ticket stats error:', error);
+            }
+        }
+
+        // Edit Profile Functions
+        function showEditModal() {
+            document.getElementById('editUsername').value = document.getElementById('username').textContent;
+            document.getElementById('editFullname').value = document.getElementById('fullnameInfo').textContent !== '-' ? 
+                document.getElementById('fullnameInfo').textContent : '';
+            document.getElementById('editEmail').value = document.getElementById('email').textContent !== '-' ? 
+                document.getElementById('email').textContent : '';
+            document.getElementById('editPhone').value = document.getElementById('phone').textContent !== '-' ? 
+                document.getElementById('phone').textContent : '';
+
+            document.getElementById('editModal').classList.add('show');
+        }
+
+        function closeEditModal() {
+            document.getElementById('editModal').classList.remove('show');
+            hideEditAlerts();
+        }
+
+        document.getElementById('editForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            await saveProfile();
+        });
+
+        async function saveProfile() {
+            const email = document.getElementById('editEmail').value.trim();
+            const phone = document.getElementById('editPhone').value.trim();
+
+            hideEditAlerts();
+
+            if (phone && !/^[0-9]{10,11}$/.test(phone)) {
+                showEditError('Số điện thoại phải có 10-11 chữ số');
+                return;
+            }
+
+            if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                showEditError('Email không hợp lệ');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/profile/update`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        email: email,
+                        phone: phone
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showEditSuccess('Cập nhật thông tin thành công!');
+                    
+                    document.getElementById('email').textContent = email || '-';
+                    document.getElementById('phone').textContent = phone || '-';
+
+                    setTimeout(() => {
+                        closeEditModal();
+                    }, 1500);
+                } else {
+                    showEditError(data.message || 'Cập nhật thất bại');
+                }
+            } catch (error) {
+                console.error('Update profile error:', error);
+                showEditError('Lỗi kết nối. Vui lòng thử lại.');
+            }
+        }
+
+        function showEditError(message) {
+            const errorDiv = document.getElementById('editError');
+            errorDiv.textContent = message;
+            errorDiv.classList.add('show');
+            setTimeout(() => {
+                errorDiv.classList.remove('show');
+            }, 5000);
+        }
+
+        function showEditSuccess(message) {
+            const successDiv = document.getElementById('editSuccess');
+            successDiv.textContent = message;
+            successDiv.classList.add('show');
+        }
+
+        function hideEditAlerts() {
+            document.getElementById('editError').classList.remove('show');
+            document.getElementById('editSuccess').classList.remove('show');
+        }
+
+        // Change Password Functions
+        function showPasswordModal() {
+            document.getElementById('passwordForm').reset();
+            hidePasswordAlerts();
+            document.getElementById('passwordModal').classList.add('show');
+        }
+
+        function closePasswordModal() {
+            document.getElementById('passwordModal').classList.remove('show');
+            hidePasswordAlerts();
+        }
+
+        document.getElementById('passwordForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            await changePassword();
+        });
+
+        async function changePassword() {
+            const oldPassword = document.getElementById('oldPassword').value;
+            const newPassword = document.getElementById('newPassword').value;
+            const confirmPassword = document.getElementById('confirmPassword').value;
+
+            hidePasswordAlerts();
+
+            if (newPassword.length < 8) {
+                showPasswordError('Mật khẩu mới phải có ít nhất 8 ký tự');
+                return;
+            }
+
+            if (newPassword !== confirmPassword) {
+                showPasswordError('Mật khẩu xác nhận không khớp');
+                return;
+            }
+
+            if (oldPassword === newPassword) {
+                showPasswordError('Mật khẩu mới phải khác mật khẩu cũ');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/auth/change-password`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        old_password: oldPassword,
+                        new_password: newPassword
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showPasswordSuccess('Đổi mật khẩu thành công!');
+                    document.getElementById('passwordForm').reset();
+                    
+                    setTimeout(() => {
+                        closePasswordModal();
+                    }, 1500);
+                } else {
+                    showPasswordError(data.message || 'Đổi mật khẩu thất bại');
+                }
+            } catch (error) {
+                console.error('Change password error:', error);
+                showPasswordError('Lỗi kết nối. Vui lòng thử lại.');
+            }
+        }
+
+        function showPasswordError(message) {
+            const errorDiv = document.getElementById('passwordError');
+            errorDiv.textContent = message;
+            errorDiv.classList.add('show');
+            setTimeout(() => {
+                errorDiv.classList.remove('show');
+            }, 5000);
+        }
+
+        function showPasswordSuccess(message) {
+            const successDiv = document.getElementById('passwordSuccess');
+            successDiv.textContent = message;
+            successDiv.classList.add('show');
+        }
+
+        function hidePasswordAlerts() {
+            document.getElementById('passwordError').classList.remove('show');
+            document.getElementById('passwordSuccess').classList.remove('show');
+        }
+
+        function togglePasswordField(fieldId) {
+            const field = document.getElementById(fieldId);
+            const icon = field.nextElementSibling;
+            
+            if (field.type === 'password') {
+                field.type = 'text';
+                icon.textContent = '🙈';
+            } else {
+                field.type = 'password';
+                icon.textContent = '👁️';
+            }
+        }
+
+        async function logout() {
+            if (!confirm('Bạn có chắc muốn đăng xuất?')) return;
+
+            try {
+                const response = await fetch(`${API_URL}/auth/logout`, {
+                    method: 'POST',
+                    credentials: 'include'
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    alert('Đăng xuất thành công!');
+                    window.location.href = '/';
+                }
+            } catch (error) {
+                console.error('Logout error:', error);
+                alert('Đăng xuất thất bại. Vui lòng thử lại.');
+            }
+        }
+
+        // Close modals on outside click
+        document.getElementById('editModal').addEventListener('click', (e) => {
+            if (e.target.id === 'editModal') {
+                closeEditModal();
+            }
+        });
+
+        document.getElementById('passwordModal').addEventListener('click', (e) => {
+            if (e.target.id === 'passwordModal') {
+                closePasswordModal();
+            }
+        });
+    </script>
+</body>
+</html>

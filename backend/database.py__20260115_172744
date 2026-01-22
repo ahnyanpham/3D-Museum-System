@@ -1,0 +1,231 @@
+import sqlite3
+from pathlib import Path
+from datetime import datetime
+
+DB_PATH = Path(__file__).parent.parent / 'data' / 'museum.db'
+
+def get_connection():
+    """Get database connection"""
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def dict_factory(cursor, row):
+    """Convert row to dictionary"""
+    return {col[0]: row[idx] for idx, col in enumerate(cursor.description)}
+
+def fetch_all(query, params=()):
+    """Fetch all rows"""
+    conn = get_connection()
+    conn.row_factory = dict_factory
+    cursor = conn.cursor()
+    cursor.execute(query, params)
+    results = cursor.fetchall()
+    conn.close()
+    return results
+
+def fetch_one(query, params=()):
+    """Fetch one row"""
+    conn = get_connection()
+    conn.row_factory = dict_factory
+    cursor = conn.cursor()
+    cursor.execute(query, params)
+    result = cursor.fetchone()
+    conn.close()
+    return result
+
+def execute_query(query, params=()):
+    """Execute INSERT/UPDATE/DELETE query"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(query, params)
+    conn.commit()
+    last_id = cursor.lastrowid
+    conn.close()
+    return last_id
+
+def init_db():
+    """Initialize database with schema"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    # Create tables
+    cursor.executescript("""
+    -- Museum Info Table
+    CREATE TABLE IF NOT EXISTS museum_info (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        address TEXT,
+        phone TEXT,
+        email TEXT,
+        website TEXT,
+        description TEXT,
+        opening_hours TEXT,
+        latitude REAL,
+        longitude REAL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- Museum Corners Table
+    CREATE TABLE IF NOT EXISTS museum_corners (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        corner_name TEXT NOT NULL,
+        latitude REAL NOT NULL,
+        longitude REAL NOT NULL,
+        description TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- Monuments Table
+    CREATE TABLE IF NOT EXISTS monuments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        description TEXT,
+        latitude REAL NOT NULL,
+        longitude REAL NOT NULL,
+        height REAL,
+        material TEXT,
+        direction INTEGER,
+        is_active BOOLEAN DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- Ticket Types Table
+    CREATE TABLE IF NOT EXISTS ticket_types (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE,
+        description TEXT,
+        price REAL NOT NULL,
+        is_active BOOLEAN DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- Customers Table
+    CREATE TABLE IF NOT EXISTS customers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        full_name TEXT NOT NULL,
+        phone TEXT,
+        email TEXT,
+        date_of_birth DATE,
+        gender TEXT,
+        nationality TEXT,
+        address TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- Tickets Table
+    CREATE TABLE IF NOT EXISTS tickets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        customer_id INTEGER NOT NULL,
+        ticket_type_id INTEGER NOT NULL,
+        ticket_code TEXT NOT NULL UNIQUE,
+        quantity INTEGER NOT NULL DEFAULT 1,
+        total_price REAL NOT NULL,
+        visit_date DATE NOT NULL,
+        payment_method TEXT,
+        status TEXT DEFAULT 'active',
+        qr_content TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (customer_id) REFERENCES customers(id),
+        FOREIGN KEY (ticket_type_id) REFERENCES ticket_types(id)
+    );
+
+    -- Visit History Table
+    CREATE TABLE IF NOT EXISTS visit_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        customer_id INTEGER NOT NULL,
+        ticket_id INTEGER,
+        check_in_time TIMESTAMP NOT NULL,
+        check_out_time TIMESTAMP,
+        duration_minutes INTEGER,
+        rating INTEGER,
+        feedback TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (customer_id) REFERENCES customers(id),
+        FOREIGN KEY (ticket_id) REFERENCES tickets(id)
+    );
+
+    -- Attractions Table
+    CREATE TABLE IF NOT EXISTS attractions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        description TEXT,
+        floor_number INTEGER,
+        category TEXT,
+        latitude REAL,
+        longitude REAL,
+        is_active BOOLEAN DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- Indexes
+    CREATE INDEX IF NOT EXISTS idx_tickets_customer ON tickets(customer_id);
+    CREATE INDEX IF NOT EXISTS idx_tickets_type ON tickets(ticket_type_id);
+    CREATE INDEX IF NOT EXISTS idx_tickets_date ON tickets(visit_date);
+    CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status);
+    CREATE INDEX IF NOT EXISTS idx_visit_customer ON visit_history(customer_id);
+    CREATE INDEX IF NOT EXISTS idx_customers_phone ON customers(phone);
+    """)
+    
+    # Insert sample data if not exists
+    cursor.execute("SELECT COUNT(*) as count FROM museum_info")
+    if cursor.fetchone()[0] == 0:
+        cursor.executescript("""
+        -- Museum Info
+        INSERT INTO museum_info (name, address, phone, email, latitude, longitude, description, opening_hours)
+        VALUES (
+            'Bao tang Ho Chi Minh - Ben Nha Rong',
+            '1 Nguyen Tat Thanh, Phuong 12, Quan 4, TP.HCM',
+            '028-3829-7542',
+            'baotanghcm@tphcm.gov.vn',
+            10.7682339,
+            106.7068328,
+            'Bao tang lich su ve Chu tich Ho Chi Minh',
+            'Tue-Sun: 7:30-11:30, 13:30-17:00'
+        );
+
+        -- Corners
+        INSERT INTO museum_corners (corner_name, latitude, longitude, description) VALUES
+        ('Goc Dong Bac', 10.768733, 106.707333, 'Goc Dong Bac cua bao tang'),
+        ('Goc Tay Bac', 10.768733, 106.706333, 'Goc Tay Bac cua bao tang'),
+        ('Goc Tay Nam', 10.767733, 106.706333, 'Goc Tay Nam cua bao tang'),
+        ('Goc Dong Nam', 10.767733, 106.707333, 'Goc Dong Nam cua bao tang');
+
+        -- Monuments
+        INSERT INTO monuments (name, description, latitude, longitude, height, material, direction) VALUES
+        ('Tuong Chu tich Ho Chi Minh', 'Tuong dong Bac Ho tai Ben Nha Rong', 10.7682339, 106.7068328, 3.5, 'Dong', 45),
+        ('Ben Nha Rong', 'Di tich lich su quoc gia dac biet', 10.7680, 106.7070, NULL, NULL, NULL);
+
+        -- Ticket Types
+        INSERT INTO ticket_types (name, description, price) VALUES
+        ('Ve nguoi lon', 'Ve vao cua cho nguoi lon', 40000),
+        ('Ve tre em', 'Ve vao cua cho tre em duoi 12 tuoi', 20000),
+        ('Ve sinh vien', 'Ve vao cua cho sinh vien co the', 25000),
+        ('Ve nguoi cao tuoi', 'Ve vao cua cho nguoi tren 60 tuoi', 15000),
+        ('Ve nhom', 'Ve vao cua cho nhom tu 10 nguoi tro len', 30000),
+        ('Ve mien phi', 'Ve mien phi cho doi tuong chinh sach', 0);
+
+        -- Attractions
+        INSERT INTO attractions (name, description, floor_number, category, latitude, longitude) VALUES
+        ('Phong trung bay 1', 'Trung bay hinh anh Bac Ho thoi tre', 1, 'Trung bay', 10.7682, 106.7068),
+        ('Phong trung bay 2', 'Lich su cach mang Viet Nam', 1, 'Trung bay', 10.7683, 106.7069),
+        ('Phong trung bay 3', 'Di vat va hien vat cua Bac', 2, 'Trung bay', 10.7682, 106.7069),
+        ('Ben tau lich su', 'Noi Bac len tau nam 1911', 0, 'Di tich', 10.7680, 106.7070);
+
+        -- Sample Customer
+        INSERT INTO customers (full_name, phone, email, gender, nationality)
+        VALUES ('Nguyen Van A', '0909123456', 'nguyenvana@example.com', 'Nam', 'Viet Nam');
+        """)
+    
+    conn.commit()
+    conn.close()
+
+if __name__ == '__main__':
+    init_db()
+    print("Database initialized successfully")
